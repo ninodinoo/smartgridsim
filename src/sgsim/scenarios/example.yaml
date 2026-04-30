@@ -1,0 +1,25 @@
+# Beispiel-Szenario: Kleinstadt mit einer PV-Anlage und einer Wohnlast.
+# Dient als Default fuer "sgsim init".
+
+name: kleinstadt_minimal
+seed: 42
+dt_min: 15
+
+weather:
+  latitude_deg: 50.0
+  cloudiness: 0.3
+  mean_wind_m_s: 6.0
+  mean_temp_c: 12.0
+
+components:
+  - type: PVPlant
+    name: pv_dachanlagen
+    area_m2: 50000        # 5 ha Modulflaeche, ~10 MWp
+    eta_module: 0.20
+    eta_inverter: 0.97
+    curtailment: 0.0
+
+  - type: ResidentialLoad
+    name: wohngebiet_nord
+    base_mw: 8.0
+    peak_mw: 12.0
