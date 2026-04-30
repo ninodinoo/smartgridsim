@@ -142,6 +142,34 @@ components:
     min_soc_mwh: 50.0
     setpoint_mw: 0.0
 
+  # ---------------- Sektorkopplung (steuerbare Lasten) ----------------
+  - type: HeatPumpLoad
+    name: waermepumpen_aggregat
+    base_thermal_demand_mw: 30.0
+    cop: 3.5
+    boost_factor: 2.0
+    thermal_capacity_mwh: 100.0
+    thermal_soc_mwh: 50.0
+    setpoint_mw: 0.0
+
+  - type: EVFleet
+    name: ev_flotte
+    n_vehicles: 5000
+    battery_kwh: 60.0
+    peak_charge_kw: 11.0
+    eta_charge: 0.92
+    eta_discharge: 0.92
+    away_fraction: 0.7
+    drive_kwh_per_day: 12.0
+    soc_kwh_per_vehicle: 30.0
+    setpoint_mw: 0.0
+
+  - type: Electrolyzer
+    name: elektrolyseur
+    p_max_mw: 50.0
+    eta_h2: 0.70
+    setpoint_mw: 0.0
+
   # Saisonaler Wasserstoff-Speicher (z. B. Salzkaverne).
   # 5 GWh entspricht ~1.5 Wochen Vollversorgung der Stadt aus diesem Speicher
   # bei mittlerer Last — realistisch fuer Dunkelflauten-Backup.

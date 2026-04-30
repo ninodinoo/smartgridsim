@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from ..components import (
     BiomassPlant,
     DispatchableGenerator,
+    Electrolyzer,
+    EVFleet,
     GeothermalPlant,
+    HeatPumpLoad,
     HydrogenGasTurbine,
     Storage,
     TickContext,
@@ -50,6 +53,14 @@ class NaiveController(Controller):
             elif isinstance(c, HydrogenGasTurbine):
                 c.setpoint_mw = c.p_max_mw * self.h2_turbine_fraction
             elif isinstance(c, Storage):
+                c.setpoint_mw = 0.0
+            elif isinstance(c, HeatPumpLoad):
+                # Naive Strategie: Waermepumpe deckt nur den aktuellen Bedarf
+                # (Setpoint wird waehrend des Tick auf baseline gecappt).
+                # Hier: konstant 8 MW elektrisch (~28 MW thermisch bei COP 3.5),
+                # mittlerer Auslegungsfall.
+                c.setpoint_mw = 8.0
+            elif isinstance(c, (EVFleet, Electrolyzer)):
                 c.setpoint_mw = 0.0
             elif isinstance(c, DispatchableGenerator):
                 # Falls noch fossile Restkomponenten in einem Szenario auftauchen

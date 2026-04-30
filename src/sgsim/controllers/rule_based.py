@@ -31,7 +31,10 @@ from ..components import (
     BiomassPlant,
     Component,
     DispatchableGenerator,
+    Electrolyzer,
+    EVFleet,
     GeothermalPlant,
+    HeatPumpLoad,
     HydrogenGasTurbine,
     HydrogenStorage,
     PVPlant,
@@ -109,15 +112,26 @@ class RuleBasedController(Controller):
                 g.setpoint_mw = g.p_max_mw
                 cheap_dispatch_p += g.p_max_mw
 
-        # 2. Reset H2-Turbine, Speicher, Curtailment
+        # 2. Reset H2-Turbine, Speicher, Curtailment, Sektorkopplung
         for h in self._filter(grid, HydrogenGasTurbine):
             h.setpoint_mw = 0.0
         for s in self._filter(grid, Storage):
             s.setpoint_mw = 0.0
         for r in self._filter(grid, (PVPlant, WindTurbine)):
             r.curtailment = 0.0
+        for e in self._filter(grid, (Electrolyzer, EVFleet)):
+            e.setpoint_mw = 0.0
 
-        residual = load_mw - renewable_mw - cheap_dispatch_p
+        # 3. Waermepumpen folgen ihrem Bedarf (Heuristik: Setpoint = baseline,
+        #    keine flexible Vor-/Nachladung in der einfachen Strategie).
+        heatpump_load_mw = 0.0
+        for hp in self._filter(grid, HeatPumpLoad):
+            assert isinstance(hp, HeatPumpLoad)
+            baseline = hp._thermal_demand_mw(next_ctx) / hp.cop if hp.cop > 0 else 0.0
+            hp.setpoint_mw = baseline
+            heatpump_load_mw += baseline
+
+        residual = load_mw + heatpump_load_mw - renewable_mw - cheap_dispatch_p
 
         if residual > 0.0:
             self._cover_deficit(grid, residual)
@@ -128,7 +142,7 @@ class RuleBasedController(Controller):
 
     def _cover_deficit(self, grid: Grid, deficit_mw: float) -> None:
         # Reihenfolge: hoechster Round-Trip-Wirkungsgrad zuerst.
-        # Batterie (~0.90) > Pumpspeicher (~0.80) > H2-Turbine > H2-Speicher (~0.36)
+        # Batterie (~0.90) > Pumpspeicher (~0.80) > V2G (EV) > H2-Turbine > H2-Speicher (~0.36)
 
         for cls in (BatteryStorage, PumpedHydroStorage):
             for s in self._filter(grid, cls):
@@ -141,6 +155,17 @@ class RuleBasedController(Controller):
                 use = min(avail, deficit_mw)
                 s.setpoint_mw = use
                 deficit_mw -= use
+
+        # V2G: E-Auto-Flotte einspeisen lassen — vorsichtig nur 30 % der
+        # Peak-Leistung als Reserve, damit Mobilitaetsbedarf gewahrt bleibt.
+        for ev in self._filter(grid, EVFleet):
+            assert isinstance(ev, EVFleet)
+            if deficit_mw <= 0:
+                return
+            v2g_max = ev.total_peak_charge_mw * 0.3
+            use = min(v2g_max, deficit_mw)
+            ev.setpoint_mw = use
+            deficit_mw -= use
 
         # H2-Gasturbine als dispatchierbares Backup
         for h in self._filter(grid, HydrogenGasTurbine):
@@ -170,10 +195,12 @@ class RuleBasedController(Controller):
     def _absorb_surplus(
         self, grid: Grid, surplus_mw: float, next_ctx: TickContext
     ) -> None:
-        # Reihenfolge: Batterie (schnell) > Pumpspeicher (mittel) >
-        # H2-Speicher (saisonale Reserve aufbauen)
+        # Reihenfolge nach Round-Trip-Wirkungsgrad und Sinnhaftigkeit:
+        #   Batterie (schnell, hoch eff.) > Pumpspeicher >
+        #   EV-Laden (kostenfrei nuetzlich!) > Elektrolyseur (P2G saisonal) >
+        #   H2-Speicher direkt > Curtailment
 
-        for cls in (BatteryStorage, PumpedHydroStorage, HydrogenStorage):
+        for cls in (BatteryStorage, PumpedHydroStorage):
             for s in self._filter(grid, cls):
                 if surplus_mw <= 0:
                     return
@@ -182,6 +209,34 @@ class RuleBasedController(Controller):
                 use = min(s.p_max_charge_mw, free, surplus_mw)
                 s.setpoint_mw = -use
                 surplus_mw -= use
+
+        # E-Autos laden mit Surplus (Wallbox-Lenkung) — nur bis 70 % der Peak-MW,
+        # Rest bleibt fuer Mobilitaetsbedarf.
+        for ev in self._filter(grid, EVFleet):
+            if surplus_mw <= 0:
+                return
+            ev_max_charge = ev.total_peak_charge_mw * 0.7
+            use = min(ev_max_charge, surplus_mw)
+            ev.setpoint_mw = -use
+            surplus_mw -= use
+
+        # Elektrolyseur: Surplus in H2 wandeln (saisonale Reserve aufbauen)
+        for el in self._filter(grid, Electrolyzer):
+            if surplus_mw <= 0:
+                return
+            use = min(el.p_max_mw, surplus_mw)
+            el.setpoint_mw = use
+            surplus_mw -= use
+
+        # H2-Speicher direkt laden (= Elektrolyse intern)
+        for s in self._filter(grid, HydrogenStorage):
+            if surplus_mw <= 0:
+                return
+            free = max(0.0,
+                (s.capacity_mwh - s.soc_mwh) / max(s.eta_charge, 1e-9) / grid.dt_h)
+            use = min(s.p_max_charge_mw, free, surplus_mw)
+            s.setpoint_mw = -use
+            surplus_mw -= use
 
         # Letzter Schritt: PV/Wind abregeln
         if surplus_mw <= 0:

@@ -101,10 +101,19 @@ sie verbrennt Wasserstoff aus dem H₂-Langzeitspeicher (sauber, aber teuer
 | `pumpspeicher_alpental` | ~980 MWh | 200 / 220 MW | 0.80 |
 | `h2_speicher_saisonal` | 5 000 MWh | 100 / 150 MW | 0.36 |
 
-Die **drei Speicher decken drei Zeitskalen ab**:
-- Batterie: Sekunden bis Stunden
-- Pumpspeicher: Stunden bis Tage
-- H₂-Speicher: Tage bis Wochen (saisonal)
+Die **drei Speicher decken drei Zeitskalen ab**: Batterie (Sekunden–Stunden),
+Pumpspeicher (Stunden–Tage), H₂-Speicher (Tage–Wochen / saisonal).
+
+**Sektorkopplungs-Lasten (steuerbare Verbraucher):**
+| Name | P_max | Bemerkung |
+|---|---|---|
+| `waermepumpen_aggregat` | bis ~2× Bedarf | thermischer Pufferspeicher 100 MWh; setpoint > 0 = Strombezug, negativ am Knoten |
+| `ev_flotte` | 55 MW Spitze (V2G) | bidirektional: setpoint > 0 = entladen ins Netz, < 0 = laden |
+| `elektrolyseur` | 50 MW | nur Last (Strom → H₂); setpoint > 0 = Strombezug |
+
+Sektorkopplungs-Komponenten sind **die spannendsten Stellgrößen für
+volatile Erneuerbare**: bei PV-Spitze Elektrolyseur und EV-Flotte laden,
+bei Lastspitze EV-Flotte einspeisen lassen.
 
 ### Wichtige Modell-Eigenheiten
 - **Biomasse-Anlauf**: Rampe nur 0.5 MW/min ⇒ nach Setpoint 25 erreicht sie

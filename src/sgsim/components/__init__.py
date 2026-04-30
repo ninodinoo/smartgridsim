@@ -25,6 +25,11 @@ from .storage import (
     PumpedHydroStorage,
     Storage,
 )
+from .sector_coupling import (
+    Electrolyzer,
+    EVFleet,
+    HeatPumpLoad,
+)
 
 __all__ = [
     "Component",
@@ -45,6 +50,9 @@ __all__ = [
     "BatteryStorage",
     "PumpedHydroStorage",
     "HydrogenStorage",
+    "HeatPumpLoad",
+    "EVFleet",
+    "Electrolyzer",
     "COMPONENT_REGISTRY",
     "from_dict",
 ]
@@ -65,6 +73,9 @@ COMPONENT_REGISTRY: dict[str, type[Component]] = {
     "BatteryStorage": BatteryStorage,
     "PumpedHydroStorage": PumpedHydroStorage,
     "HydrogenStorage": HydrogenStorage,
+    "HeatPumpLoad": HeatPumpLoad,
+    "EVFleet": EVFleet,
+    "Electrolyzer": Electrolyzer,
 }
 
 
