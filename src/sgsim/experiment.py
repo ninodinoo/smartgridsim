@@ -9,17 +9,38 @@ in der die Baseline-Strategien (naive, rule_based) gegen die KI gemessen werden.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from . import __version__
 from .components import TickContext, from_dict
 from .controllers import CONTROLLER_REGISTRY, Controller
+from .economics import EconomicsParams, compute_economics
 from .engine import Grid
 from .weather import SyntheticWeather
+
+
+def reproducibility_hash(scenario_path: Path, seed: int, controller_name: str,
+                         steps: int) -> str:
+    """SHA-256 ueber Code-Version, Szenario-Inhalt, Seed, Controller, Schritte.
+
+    Aendert sich einer dieser Inputs, aendert sich der Hash. Damit kann
+    in der Seminararbeit garantiert werden, dass die Plot-Ergebnisse exakt
+    rekonstruierbar sind.
+    """
+    h = hashlib.sha256()
+    h.update(__version__.encode("utf-8"))
+    h.update(b"\n")
+    h.update(scenario_path.read_bytes())
+    h.update(f"\nseed={seed}\ncontroller={controller_name}\nsteps={steps}\n"
+             f"python={sys.version}\n".encode("utf-8"))
+    return h.hexdigest()[:16]   # Kurzform reicht
 
 
 # ---------------------------------------------------------------------------
@@ -150,10 +171,17 @@ def aggregate_metrics(grid: Grid) -> dict[str, Any]:
 
 
 def write_metrics_sidecar(grid: Grid, csv_path: Path,
-                          controller_name: str) -> Path:
+                          controller_name: str,
+                          repro_hash: str | None = None,
+                          economics: dict | None = None) -> Path:
     sidecar = csv_path.with_suffix(".metrics.json")
     payload = aggregate_metrics(grid)
     payload["controller"] = controller_name
+    if repro_hash:
+        payload["reproducibility_hash"] = repro_hash
+        payload["sgsim_version"] = __version__
+    if economics:
+        payload["economics"] = economics
     sidecar.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return sidecar
 

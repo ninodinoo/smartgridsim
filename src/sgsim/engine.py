@@ -19,8 +19,20 @@ from .components import (
     WindTurbine,
     from_dict,
 )
+from .components.loads import (
+    CommercialLoad,
+    IndustrialLoad,
+    ResidentialLoad,
+)
 from .frequency import F_NOMINAL_HZ, FrequencyState
 from .weather import SyntheticWeather
+
+# Komponententypen, deren step()-Output als ECHTE Last gilt (nicht als
+# Speicherladung oder Sektorkopplungs-Stromsenke). Wichtig fuer die
+# saubere Trennung von Last-Energie und Speicher-Lade-Energie.
+LOAD_TYPES: tuple[type[Component], ...] = (
+    ResidentialLoad, CommercialLoad, IndustrialLoad,
+)
 
 
 DEFAULT_DT_MIN = 15.0  # Standard-Zeitschritt: 15 Minuten
@@ -49,6 +61,8 @@ class TickRecord:
     p_total_mw: float
     energy_in_mwh: float                          # Σ(P>0) * dt
     energy_out_mwh: float                         # Σ(|P|<0) * dt
+    load_energy_mwh: float                        # nur echte Lasten
+    storage_charge_mwh: float                     # nur Speicher-Laden (Bezug aus Netz)
     imbalance_mwh: float                          # P_total * dt
     co2_kg: float                                 # CO2-Emissionen dieses Ticks
     renewable_energy_mwh: float                   # erneuerbar erzeugte Energie
@@ -103,6 +117,8 @@ class Grid:
         per_comp_details: dict[str, dict[str, float]] = {}
         e_in = 0.0
         e_out = 0.0
+        e_load = 0.0
+        e_storage_charge = 0.0
         p_total = 0.0
         co2_kg = 0.0
         e_renewable = 0.0
@@ -117,6 +133,14 @@ class Grid:
                 e_in += p * self.dt_h
             else:
                 e_out += -p * self.dt_h
+                # Trennung: echte Last vs. Speicher-Laden vs. Sektorkopplungs-Last
+                if isinstance(c, LOAD_TYPES):
+                    e_load += -p * self.dt_h
+                elif isinstance(c, Storage):
+                    e_storage_charge += -p * self.dt_h
+                # Sektorkopplungs-Komponenten (HeatPump, EVFleet laden,
+                # Electrolyzer) zaehlen weder als echte Last noch als
+                # reine Speicherladung — sie tauchen nur in e_out auf.
 
             # CO2 nur fuer dispatchierbare Generatoren mit Faktor
             if isinstance(c, DispatchableGenerator) and p > 0.0:
@@ -144,6 +168,8 @@ class Grid:
             p_total_mw=p_total,
             energy_in_mwh=e_in,
             energy_out_mwh=e_out,
+            load_energy_mwh=e_load,
+            storage_charge_mwh=e_storage_charge,
             imbalance_mwh=p_total * self.dt_h,
             co2_kg=co2_kg,
             renewable_energy_mwh=e_renewable,

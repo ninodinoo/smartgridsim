@@ -23,10 +23,12 @@ from . import ai as _ai  # noqa: F401  Side-Effekt: registriert KI-Controller
 from .components import from_dict
 from .controllers import CONTROLLER_REGISTRY
 from .engine import Grid
+from .economics import EconomicsParams, compute_economics
 from .experiment import (
     build_grid,
     compare_runs,
     export_csv,
+    reproducibility_hash,
     run_experiment,
     write_metrics_sidecar,
 )
@@ -355,10 +357,15 @@ def experiment_run(scenario: str | None, controller_name: str,
     """Einen vollstaendigen Vergleichslauf ausfuehren."""
     if scenario is None:
         scenario = str(Path(__file__).parent / "scenarios" / "stadt_mittel.yaml")
-    grid, _ctrl = run_experiment(Path(scenario), controller_name, steps, seed)
+    scenario_path = Path(scenario)
+    used_seed = seed if seed is not None else 42
+    grid, _ctrl = run_experiment(scenario_path, controller_name, steps, seed)
     out_path = Path(out)
     rows = export_csv(grid, out_path)
-    sidecar = write_metrics_sidecar(grid, out_path, controller_name)
+    repro = reproducibility_hash(scenario_path, used_seed, controller_name, steps)
+    economics = compute_economics(grid)
+    sidecar = write_metrics_sidecar(grid, out_path, controller_name,
+                                    repro_hash=repro, economics=economics)
     _emit({
         "ok": True,
         "controller": controller_name,
@@ -368,7 +375,9 @@ def experiment_run(scenario: str | None, controller_name: str,
         "rows": rows,
         "out": str(out_path.resolve()),
         "metrics_sidecar": str(sidecar.resolve()),
+        "reproducibility_hash": repro,
         "metrics": grid.metrics(),
+        "economics": economics,
     })
 
 
