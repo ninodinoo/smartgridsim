@@ -157,21 +157,24 @@ Der Adapter nutzt Prompt-Caching fuer den System-Prompt (5-min-TTL),
 sodass die Token-Kosten ueber einen Lauf weitgehend auf den variablen
 Zustand pro Tick beschraenkt sind.
 
-### Vergleich Naive vs. RuleBased vs. RandomAI (24 h, Seed 42)
+### Vergleich Naive vs. RuleBased vs. RandomAI vs. Claude live (24 h, Seed 42)
 
-| Metrik | Naive | RuleBased | RandomAI |
-|---|---|---|---|
-| CO₂ [t] | 7.30 | **4.33** | 7.62 |
-| CO₂ pro MWh Bedarf | 1 552 | **813** | 1 223 |
-| Surplus [MWh] | 6 459 | **536** | 6 661 |
-| Brownout-Ticks | 0 | 24 | 5 |
-| Spitzen-Surplus [MW] | 332 | **109** | 656 |
+| Metrik | Naive | RuleBased | RandomAI | **Claude live** |
+|---|---|---|---|---|
+| CO₂ [t] | 7.30 | 4.33 | 7.62 | **1.80** |
+| CO₂ pro MWh Bedarf [kg] | 1 552 | 813 | 1 223 | **338** |
+| Surplus [MWh] | 6 459 | 536 | 6 661 | **426** |
+| Brownout-Ticks | 0 | 24 | 5 | 29 |
+| Spitzen-Surplus [MW] | 332 | 109 | 656 | **93** |
 
-RandomAI emittiert mehr CO₂ als die naive Steuerung und produziert
-ausserdem extreme Spitzen-Ueberschuesse. Die regelbasierte Strategie
-bleibt klar dominant; die offene Frage fuer die Seminararbeit ist, ob
-ein LLM-basierter Controller ihre Brownout-Schwaeche beseitigt, ohne
-die CO₂-Vorteile zu verlieren.
+Der **"Claude live"**-Lauf ist tick-by-tick durch Claude Code in einer
+Konversation gesteuert worden — ohne fest programmierte Strategie, nur ueber
+die `sgsim`-CLI (`state` lesen, `dispatch` setzen, `tick`). Details in
+[`docs/claude_live_run_seed42.md`](docs/claude_live_run_seed42.md).
+
+**Hauptergebnis:** Die LLM-Strategie senkt CO₂ um −58 % gegenueber RuleBased
+(1.80 vs. 4.33 t). Trade-off: leicht mehr Brownouts (29 vs. 24) und groesserer
+Peak Deficit (90 vs. 25 MW), weil die Strategie aggressiver Kohle abschaltet.
 
 ## Geplant (M5+)
 
