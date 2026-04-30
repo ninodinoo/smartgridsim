@@ -116,35 +116,37 @@ class RandomAIController(AILoopController):
 # AnthropicAIController — echte LLM-Steuerung
 # ---------------------------------------------------------------------------
 
-_ANTHROPIC_SYSTEM_PROMPT = """Du steuerst ein Smart Grid einer Stadt. In jedem
-Schritt (15 Minuten Zeitaufloesung) erhaeltst du den Zustand des Netzes als
-JSON. Antworte ausschliesslich mit einem einzigen JSON-Objekt der Form:
+def _load_master_prompt() -> str:
+    """Den kanonischen Master-Prompt aus master_prompt.md laden.
+
+    Single Source of Truth: derselbe Text, den `sgsim brief` ausgibt, wird
+    hier als System-Prompt verwendet. Aenderungen am Brief wirken sich
+    automatisch auch auf die API-Steuerung aus.
+    """
+    from pathlib import Path
+    path = Path(__file__).parent / "master_prompt.md"
+    return path.read_text(encoding="utf-8")
+
+
+# Anthropic-spezifische Ergaenzung: das LLM antwortet hier ueber die
+# Messages-API, nicht ueber die CLI. Es bekommt deshalb zusaetzlich ein
+# straffes Antwort-Schema vorgeschrieben.
+_ANTHROPIC_RESPONSE_INSTRUCTION = """
+
+---
+
+## Antwortformat (NUR fuer den API-Controller)
+
+Du antwortest hier nicht ueber die CLI, sondern direkt mit einem JSON-Objekt
+der folgenden Form (keine Markdown-Codeblocks, keine Prosa drumherum):
 
 {"actions": [
   {"component": "<name>", "setpoint_mw": <float>},
   {"component": "<name>", "curtailment": <0..1>}
 ]}
 
-Keine Erklaerung, kein Markdown — nur das JSON-Objekt.
-
-Ziele in dieser Reihenfolge:
-  1. Versorgungssicherheit: |imbalance_mwh| im naechsten Tick moeglichst
-     klein, kein Defizit (P_total < 0).
-  2. CO2-Emissionen senken: bevorzuge Erneuerbare und Biomasse, dann Gas,
-     Kohle nur wenn noetig.
-  3. Energieverschwendung vermeiden: wenn Erzeugung ueber Bedarf, lade
-     Speicher; wenn Speicher voll, regle PV/Wind ab.
-
-Komponenten-Verhalten:
-  - dispatchable_generator: setpoint_mw zwischen p_min_mw und p_max_mw oder 0.
-    Beachte ramp_mw_per_min — Aenderungen sind durch die Rampe begrenzt.
-    Kohle hat lange Anfahrzeit; haelt man sie auf p_min, ist sie schnell
-    verfuegbar, andernfalls dauert das Hochfahren mehrere Schritte.
-  - battery / pumped_hydro: positiver setpoint_mw = entladen, negativer = laden.
-    Beachte soc_mwh, capacity_mwh, p_max_charge/discharge.
-  - pv / wind: curtailment 0..1 (0 = volle Einspeisung).
-
-Antworte sehr knapp — nur das JSON-Objekt."""
+Du bekommst pro Aufruf den aktuellen Snapshot des Grids als JSON. Antworte
+ausschliesslich mit dem Aktions-JSON-Objekt — sonst nichts."""
 
 
 @dataclass
@@ -175,6 +177,7 @@ class AnthropicAIController(AILoopController):
                 "AnthropicAIController(api_key=...) explizit uebergeben."
             )
         self._client = anthropic.Anthropic(api_key=key)
+        self._system_prompt = _load_master_prompt() + _ANTHROPIC_RESPONSE_INSTRUCTION
 
     def decide(self, state: dict[str, Any]) -> dict[str, Any]:
         message = self._client.messages.create(
@@ -186,7 +189,7 @@ class AnthropicAIController(AILoopController):
             system=[
                 {
                     "type": "text",
-                    "text": _ANTHROPIC_SYSTEM_PROMPT,
+                    "text": self._system_prompt,
                     "cache_control": {"type": "ephemeral"},
                 }
             ],

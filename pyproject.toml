@@ -25,6 +25,9 @@ sgsim = "sgsim.cli:cli"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+sgsim = ["scenarios/*.yaml", "ai/*.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

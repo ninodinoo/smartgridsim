@@ -302,6 +302,32 @@ def export(out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# brief — kanonischer Master-Prompt fuer KI-Controller
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.option("--format", "fmt", type=click.Choice(["text", "json"]),
+              default="text", help="Ausgabeformat")
+def brief(fmt: str) -> None:
+    """Den Master-Brief ausgeben, an dem sich KI-Controller orientieren.
+
+    Eine LLM-gestuetzte Steuerung (z. B. ein Claude-Subagent) muss sich nicht
+    bei jedem Aufruf neu erklaeren lassen — sie ruft `sgsim brief` und liest
+    daraus alles, was sie ueber Aufgabe, CLI, Komponenten und Strategie wissen
+    muss. Der `AnthropicAIController` nutzt denselben Text als System-Prompt.
+    """
+    path = Path(__file__).parent / "ai" / "master_prompt.md"
+    text = path.read_text(encoding="utf-8")
+    if fmt == "json":
+        _emit({"brief": text, "source": str(path.resolve())})
+    else:
+        # Direkt auf den Byte-Stream schreiben, damit Unicode (z. B. CO₂)
+        # auch auf Windows-Konsolen mit cp1252-Default funktioniert.
+        sys.stdout.buffer.write(text.encode("utf-8"))
+        sys.stdout.buffer.write(b"\n")
+
+
+# ---------------------------------------------------------------------------
 # experiment-Subgruppe
 # ---------------------------------------------------------------------------
 

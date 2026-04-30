@@ -118,6 +118,26 @@ hat aber 24/96 Brownout-Ticks (~25 % der Zeit) wegen der Anfahrtraegheit der
 Kohle und der begrenzten Speicherreserven. Genau dieser Trade-off ist der
 Spielraum, den die KI-Steuerung schliessen muss.
 
+## Master-Prompt für KI-Controller (`sgsim brief`)
+
+Damit ein LLM-Controller (Subagent oder Anthropic-API) **nicht jedes Mal neu
+gebrieft** werden muss, liefert das Tool selbst seinen Brief mit:
+
+```bash
+sgsim brief                # vollständiger Markdown-Brief
+sgsim brief --format json  # für maschinelle Weiterverarbeitung
+```
+
+Quelle ist `src/sgsim/ai/master_prompt.md`. Dieselbe Datei verwendet auch der
+`AnthropicAIController` als System-Prompt — Single Source of Truth.
+
+**Spawnen eines Subagents wird damit zum Einzeiler:**
+
+> "Working dir: `runs/seed_42`. Run `sgsim brief` und folge den Anweisungen."
+
+Der Subagent erfährt aus `sgsim brief` alles über CLI, Komponenten,
+Konventionen, Strategie und Output-Format — versioniert mit dem Code.
+
 ## KI-Steuerung (M4)
 
 Die KI-Controller laufen im selben Experiment-Mechanismus, kommunizieren
