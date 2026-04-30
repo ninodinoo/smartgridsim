@@ -1,0 +1,123 @@
+# Mittelgrosse Stadt (~150_000 Einwohner-Aequivalent), gemischter Erzeugungsmix.
+#
+# Eckdaten realistisch in Anlehnung an deutsche Stadtwerk-Verhaeltnisse:
+#   - Wohnlast Spitze ~150 MW, Gewerbe ~80 MW, Industrie ~60 MW
+#   - PV-Aufdach: 100 MWp installiert (50 ha Modulflaeche)
+#   - Onshore-Wind: 10 x 4 MW WEA = 40 MW Nennleistung
+#   - Laufwasserkraft: 8 MW Grundlast
+#   - Backup: 1 Gas-GuD 250 MW, 1 Steinkohle 500 MW, 1 Biomasse 25 MW
+#   - Speicher: Quartiersbatterie 100 MWh, Pumpspeicher 1 GWh (geometrisch)
+
+name: stadt_mittel
+seed: 42
+dt_min: 15
+
+weather:
+  latitude_deg: 50.0
+  cloudiness: 0.4
+  mean_wind_m_s: 7.0
+  mean_temp_c: 10.0
+
+components:
+  # ----- Lasten -----
+  - type: ResidentialLoad
+    name: wohnen
+    base_mw: 60.0
+    peak_mw: 90.0
+
+  - type: CommercialLoad
+    name: gewerbe
+    base_mw: 10.0
+    peak_mw: 70.0
+
+  - type: IndustrialLoad
+    name: industrie
+    base_mw: 60.0
+    night_reduction: 0.20
+
+  # ----- Erneuerbare Erzeuger (nicht dispatchierbar) -----
+  - type: PVPlant
+    name: pv_aufdach
+    area_m2: 500000          # 50 ha → ca. 100 MWp bei eta=0.20
+    eta_module: 0.20
+    eta_inverter: 0.97
+    curtailment: 0.0
+
+  - type: WindTurbine
+    name: wind_park_nord
+    rotor_diameter_m: 130
+    p_rated_mw: 4.0
+    n_turbines: 10           # 40 MW Park
+    cp: 0.42
+    v_cut_in: 3.0
+    v_rated: 12.0
+    v_cut_out: 25.0
+    air_density_kg_m3: 1.225
+    curtailment: 0.0
+
+  - type: RunOfRiverHydro
+    name: laufwasser_fluss
+    p_mw: 8.0
+    availability: 0.95
+
+  # ----- Dispatchierbare Erzeuger -----
+  - type: GasGuDPlant
+    name: gas_kw
+    p_min_mw: 50.0
+    p_max_mw: 250.0
+    ramp_mw_per_min: 8.0
+    eta: 0.58
+    co2_kg_per_mwh: 350.0
+    fuel: natural_gas
+    setpoint_mw: 0.0
+    current_p_mw: 0.0
+
+  - type: CoalPlant
+    name: kohle_kw
+    p_min_mw: 200.0
+    p_max_mw: 500.0
+    ramp_mw_per_min: 3.0
+    eta: 0.42
+    co2_kg_per_mwh: 900.0
+    fuel: hard_coal
+    setpoint_mw: 0.0
+    current_p_mw: 0.0
+
+  - type: BiomassPlant
+    name: biomasse
+    p_min_mw: 5.0
+    p_max_mw: 25.0
+    ramp_mw_per_min: 0.5
+    eta: 0.35
+    co2_kg_per_mwh: 25.0
+    fuel: biomass
+    setpoint_mw: 0.0
+    current_p_mw: 0.0
+
+  # ----- Speicher -----
+  - type: BatteryStorage
+    name: batterie_quartier
+    capacity_mwh: 100.0
+    soc_mwh: 50.0
+    p_max_charge_mw: 50.0
+    p_max_discharge_mw: 50.0
+    eta_charge: 0.95
+    eta_discharge: 0.95
+    min_soc_mwh: 10.0
+    c_rate: 0.5
+    setpoint_mw: 0.0
+
+  # Pumpspeicher: Geometrie nach Vorbild Goldisthal, klein skaliert.
+  # E = rho * V * g * h:  1000 * 200_000 * 9.81 * 200 / 3.6e9 ≈ 109 MWh.
+  # Wir nehmen V = 1_800_000 m^3, h = 200 m → ca. 980 MWh.
+  - type: PumpedHydroStorage
+    name: pumpspeicher_alpental
+    head_m: 200.0
+    upper_volume_m3: 1800000
+    p_max_charge_mw: 200.0
+    p_max_discharge_mw: 220.0
+    eta_charge: 0.88
+    eta_discharge: 0.91
+    initial_fill: 0.5
+    min_soc_mwh: 50.0
+    setpoint_mw: 0.0

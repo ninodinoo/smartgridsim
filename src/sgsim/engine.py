@@ -7,11 +7,26 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-from .components import Component, TickContext, from_dict
+from .components import (
+    Component,
+    DispatchableGenerator,
+    PVPlant,
+    RunOfRiverHydro,
+    Storage,
+    TickContext,
+    WindTurbine,
+    BiomassPlant,
+    from_dict,
+)
 from .weather import SyntheticWeather
 
 
 DEFAULT_DT_MIN = 15.0  # Standard-Zeitschritt: 15 Minuten
+
+# Komponententypen, deren Energie als "erneuerbar erzeugt" zaehlt
+RENEWABLE_TYPES: tuple[type[Component], ...] = (
+    PVPlant, WindTurbine, RunOfRiverHydro, BiomassPlant,
+)
 
 
 @dataclass
@@ -24,11 +39,14 @@ class TickRecord:
     irradiance: float
     wind: float
     temperature: float
-    components: dict[str, float]       # name -> P [MW]
-    p_total_mw: float                  # algebraische Summe (Erzeugung - Last)
-    energy_in_mwh: float               # Σ(P>0) * dt
-    energy_out_mwh: float              # Σ(|P|<0) * dt
-    imbalance_mwh: float               # P_total * dt (>0: Ueberschuss, <0: Defizit)
+    components: dict[str, float]                  # name -> P [MW]
+    component_details: dict[str, dict[str, float]]  # name -> snapshot()
+    p_total_mw: float
+    energy_in_mwh: float                          # Σ(P>0) * dt
+    energy_out_mwh: float                         # Σ(|P|<0) * dt
+    imbalance_mwh: float                          # P_total * dt
+    co2_kg: float                                 # CO2-Emissionen dieses Ticks
+    renewable_energy_mwh: float                   # erneuerbar erzeugte Energie
 
 
 @dataclass
@@ -49,6 +67,16 @@ class Grid:
         return self.dt_min / 60.0
 
     # -------------------------------------------------------------------
+    # Lookups
+    # -------------------------------------------------------------------
+
+    def find(self, name: str) -> Component:
+        for c in self.components:
+            if c.name == name:
+                return c
+        raise KeyError(name)
+
+    # -------------------------------------------------------------------
     # Tick
     # -------------------------------------------------------------------
 
@@ -64,17 +92,33 @@ class Grid:
         )
 
         per_comp: dict[str, float] = {}
+        per_comp_details: dict[str, dict[str, float]] = {}
         e_in = 0.0
         e_out = 0.0
         p_total = 0.0
+        co2_kg = 0.0
+        e_renewable = 0.0
         for c in self.components:
             p = c.step(self.dt_h, ctx)
             per_comp[c.name] = p
+            details = c.snapshot()
+            if details:
+                per_comp_details[c.name] = details
             p_total += p
             if p >= 0.0:
                 e_in += p * self.dt_h
             else:
                 e_out += -p * self.dt_h
+
+            # CO2 nur fuer dispatchierbare Generatoren mit Faktor
+            if isinstance(c, DispatchableGenerator) and p > 0.0:
+                co2_kg += p * self.dt_h * c.co2_kg_per_mwh
+
+            # Renewable-Buchhaltung: erneuerbare Komponenten + Speicher beim Entladen
+            # zaehlen wir konservativ NICHT zu erneuerbar (Speicher kann fossil
+            # geladen worden sein). Reine Erneuerbare zaehlen nur wenn P > 0.
+            if isinstance(c, RENEWABLE_TYPES) and p > 0.0:
+                e_renewable += p * self.dt_h
 
         rec = TickRecord(
             step=self.step_count,
@@ -84,10 +128,13 @@ class Grid:
             wind=ctx.wind_speed_m_s,
             temperature=ctx.temperature_c,
             components=per_comp,
+            component_details=per_comp_details,
             p_total_mw=p_total,
             energy_in_mwh=e_in,
             energy_out_mwh=e_out,
             imbalance_mwh=p_total * self.dt_h,
+            co2_kg=co2_kg,
+            renewable_energy_mwh=e_renewable,
         )
         self.history.append(rec)
         self.sim_time_h += self.dt_h
@@ -106,16 +153,40 @@ class Grid:
             return {"steps": 0}
         e_in = sum(r.energy_in_mwh for r in self.history)
         e_out = sum(r.energy_out_mwh for r in self.history)
-        peak_load = max((-r.p_total_mw for r in self.history if r.p_total_mw < 0),
-                        default=0.0)
-        max_surplus = max((r.p_total_mw for r in self.history if r.p_total_mw > 0),
-                          default=0.0)
+        e_ren = sum(r.renewable_energy_mwh for r in self.history)
+        co2 = sum(r.co2_kg for r in self.history)
+
+        # Brownouts: Zeitschritte mit unterdecktem Bedarf (P_total < 0).
+        # Aequivalent zu nicht gedeckter Last in MWh.
+        deficit_mwh = sum(
+            -r.imbalance_mwh for r in self.history if r.imbalance_mwh < 0
+        )
+        surplus_mwh = sum(
+            r.imbalance_mwh for r in self.history if r.imbalance_mwh > 0
+        )
+        brownout_steps = sum(1 for r in self.history if r.imbalance_mwh < 0)
+
+        peak_load = max(
+            (-r.p_total_mw for r in self.history if r.p_total_mw < 0),
+            default=0.0,
+        )
+        max_surplus = max(
+            (r.p_total_mw for r in self.history if r.p_total_mw > 0),
+            default=0.0,
+        )
+
         return {
             "steps": len(self.history),
             "sim_hours": self.sim_time_h,
             "energy_generated_mwh": e_in,
             "energy_consumed_mwh": e_out,
-            "net_imbalance_mwh": e_in - e_out,
+            "renewable_energy_mwh": e_ren,
+            "renewable_share_of_demand": (e_ren / e_out) if e_out > 0 else 0.0,
+            "co2_kg": co2,
+            "co2_kg_per_mwh_demand": (co2 / e_out) if e_out > 0 else 0.0,
+            "unserved_energy_mwh": deficit_mwh,
+            "surplus_energy_mwh": surplus_mwh,
+            "brownout_steps": brownout_steps,
             "peak_deficit_mw": peak_load,
             "peak_surplus_mw": max_surplus,
         }
@@ -140,7 +211,6 @@ class Grid:
     def from_dict(cls, data: dict[str, Any]) -> "Grid":
         weather_data = dict(data["weather"])
         weather_data.pop("_class", None)
-        # private RNG-State wird aus seed neu aufgebaut (deterministisch)
         weather_data.pop("_rng", None)
         weather = SyntheticWeather(**weather_data)
 

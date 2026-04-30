@@ -2,8 +2,9 @@
 
 Jeder Aufruf laedt den persistierten Zustand (.sgsim_state.json), fuehrt eine
 Operation aus und schreibt ihn zurueck. Damit ist der Simulator zustandsbehaftet
-zwischen einzelnen CLI-Aufrufen — Voraussetzung dafuer, dass Claude (oder ein
-anderer externer Controller) das Grid Tick fuer Tick steuern kann.
+zwischen einzelnen CLI-Aufrufen — Voraussetzung dafuer, dass ein externer
+Controller (z. B. Claude oder ein regelbasiertes Skript) das Grid Tick fuer
+Tick steuern kann.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from typing import Any
 import click
 import yaml
 
-from .components import COMPONENT_REGISTRY, from_dict
+from .components import from_dict
 from .engine import Grid
 from .weather import SyntheticWeather
 
@@ -50,6 +51,13 @@ def _save(grid: Grid) -> None:
     grid.save(STATE_FILE)
 
 
+def _set_attr_if_present(obj: object, attr: str, value: float) -> bool:
+    if hasattr(obj, attr):
+        setattr(obj, attr, value)
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # CLI-Gruppe
 # ---------------------------------------------------------------------------
@@ -73,7 +81,7 @@ def cli() -> None:
 def init(scenario: str | None, seed: int | None) -> None:
     """Neuen Grid-Zustand anlegen (ueberschreibt bestehenden)."""
     if scenario is None:
-        scenario = str(Path(__file__).parent / "scenarios" / "example.yaml")
+        scenario = str(Path(__file__).parent / "scenarios" / "stadt_mittel.yaml")
 
     raw = yaml.safe_load(Path(scenario).read_text(encoding="utf-8"))
 
@@ -96,7 +104,10 @@ def init(scenario: str | None, seed: int | None) -> None:
         "scenario": raw.get("name"),
         "seed": grid.seed,
         "dt_min": grid.dt_min,
-        "components": [c.name for c in grid.components],
+        "components": [
+            {"name": c.name, "type": type(c).__name__}
+            for c in grid.components
+        ],
         "state_file": str(STATE_FILE.resolve()),
     })
 
@@ -114,13 +125,18 @@ def state(full: bool) -> None:
     if full:
         _emit(grid.to_dict())
         return
+    components_info = []
+    for c in grid.components:
+        info = {"name": c.name, "type": type(c).__name__}
+        info.update(c.snapshot())
+        components_info.append(info)
     _emit({
         "name": grid.name,
         "seed": grid.seed,
         "dt_min": grid.dt_min,
         "sim_time_h": grid.sim_time_h,
         "step_count": grid.step_count,
-        "components": [c.to_dict() for c in grid.components],
+        "components": components_info,
         "last_tick": asdict(grid.history[-1]) if grid.history else None,
     })
 
@@ -162,21 +178,51 @@ def run(steps: int) -> None:
 @click.argument("name")
 @click.argument("value", type=float)
 def set_curtailment(name: str, value: float) -> None:
-    """PV-Abregelung 0..1 setzen (Controller-Aktion)."""
+    """PV-/Wind-Abregelung 0..1 setzen (Controller-Aktion)."""
     if not 0.0 <= value <= 1.0:
         click.echo(json.dumps({"error": "value_out_of_range",
                                "hint": "0..1 erwartet"}), err=True)
         sys.exit(2)
     grid = _require_state()
-    for c in grid.components:
-        if c.name == name and hasattr(c, "curtailment"):
-            c.curtailment = value
-            _save(grid)
-            _emit({"ok": True, "component": name, "curtailment": value})
-            return
-    click.echo(json.dumps({"error": "no_such_curtailable_component",
-                           "name": name}), err=True)
-    sys.exit(2)
+    try:
+        c = grid.find(name)
+    except KeyError:
+        click.echo(json.dumps({"error": "no_such_component",
+                               "name": name}), err=True)
+        sys.exit(2)
+    if not _set_attr_if_present(c, "curtailment", value):
+        click.echo(json.dumps({"error": "not_curtailable",
+                               "name": name, "type": type(c).__name__}), err=True)
+        sys.exit(2)
+    _save(grid)
+    _emit({"ok": True, "component": name, "curtailment": value})
+
+
+@cli.command()
+@click.argument("name")
+@click.argument("mw", type=float)
+def dispatch(name: str, mw: float) -> None:
+    """Sollwert eines dispatchierbaren Erzeugers oder Speichers setzen.
+
+    Konventionen:
+      - Erzeuger:  positiv = Einspeisung
+      - Speicher:  positiv = Entladen, negativ = Laden
+    """
+    grid = _require_state()
+    try:
+        c = grid.find(name)
+    except KeyError:
+        click.echo(json.dumps({"error": "no_such_component",
+                               "name": name}), err=True)
+        sys.exit(2)
+    if not _set_attr_if_present(c, "setpoint_mw", mw):
+        click.echo(json.dumps({"error": "not_dispatchable",
+                               "name": name, "type": type(c).__name__}),
+                   err=True)
+        sys.exit(2)
+    _save(grid)
+    _emit({"ok": True, "component": name, "setpoint_mw": mw,
+           "type": type(c).__name__})
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +239,12 @@ def metrics() -> None:
 @cli.command()
 @click.option("--out", type=click.Path(dir_okay=False), required=True)
 def export(out: str) -> None:
-    """Vollstaendiges Tick-Protokoll als CSV exportieren."""
+    """Vollstaendiges Tick-Protokoll als CSV exportieren.
+
+    Pro Komponente werden zwei Sorten Spalten geschrieben:
+      P_<name>_mw                  Wirkleistung im Tick
+      D_<name>_<feld>              Detail-Felder aus snapshot() (z. B. SoC)
+    """
     grid = _require_state()
     if not grid.history:
         click.echo(json.dumps({"error": "no_history"}), err=True)
@@ -201,11 +252,21 @@ def export(out: str) -> None:
 
     out_path = Path(out)
     comp_names = list(grid.history[0].components.keys())
+    detail_fields: list[tuple[str, str]] = []
+    for r in grid.history:
+        for cname, det in r.component_details.items():
+            for k in det.keys():
+                key = (cname, k)
+                if key not in detail_fields:
+                    detail_fields.append(key)
+
     fieldnames = [
         "step", "sim_time_h", "hour_of_day",
         "irradiance", "wind", "temperature",
         "p_total_mw", "energy_in_mwh", "energy_out_mwh", "imbalance_mwh",
+        "co2_kg", "renewable_energy_mwh",
         *[f"P_{n}_mw" for n in comp_names],
+        *[f"D_{c}_{k}" for c, k in detail_fields],
     ]
     with out_path.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
@@ -220,9 +281,13 @@ def export(out: str) -> None:
                 "energy_in_mwh": r.energy_in_mwh,
                 "energy_out_mwh": r.energy_out_mwh,
                 "imbalance_mwh": r.imbalance_mwh,
+                "co2_kg": r.co2_kg,
+                "renewable_energy_mwh": r.renewable_energy_mwh,
             }
             for n in comp_names:
                 row[f"P_{n}_mw"] = r.components.get(n, 0.0)
+            for c, k in detail_fields:
+                row[f"D_{c}_{k}"] = r.component_details.get(c, {}).get(k, "")
             w.writerow(row)
     _emit({"ok": True, "rows": len(grid.history), "out": str(out_path.resolve())})
 

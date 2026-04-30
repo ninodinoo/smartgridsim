@@ -6,7 +6,6 @@ Messwerte fuer die Seminararbeit verlaesslich sind.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import pytest
@@ -38,7 +37,7 @@ def test_tick_advances_time_by_dt() -> None:
 
 def test_pv_zero_at_night() -> None:
     g = make_grid()
-    g.sim_time_h = 2.0  # 2:00 Uhr
+    g.sim_time_h = 2.0
     rec = g.tick()
     assert rec.components["pv"] == pytest.approx(0.0, abs=1e-9)
 
@@ -47,7 +46,7 @@ def test_pv_positive_at_noon() -> None:
     g = make_grid()
     g.sim_time_h = 12.0
     rec = g.tick()
-    assert rec.components["pv"] > 1.0  # mind. 1 MW Mittagsleistung
+    assert rec.components["pv"] > 1.0
 
 
 def test_load_is_negative() -> None:
@@ -57,22 +56,15 @@ def test_load_is_negative() -> None:
 
 
 def test_imbalance_equals_p_total_times_dt() -> None:
-    """Konsistenz innerhalb eines Ticks: imbalance = P_total * dt."""
     g = make_grid()
     rec = g.tick()
     assert rec.imbalance_mwh == pytest.approx(rec.p_total_mw * g.dt_h)
 
 
 def test_energy_accounting_consistency_over_day() -> None:
-    """Bilanz ueber 24 h: erzeugte - verbrauchte Energie = Netto-Imbalance.
-
-    Diese Identitaet muss exakt gelten, sie ist ein Buchhaltungs-Test der
-    Engine. Reale Verluste/Speicher kommen erst spaeter — solange wir nur
-    Generatoren und Lasten haben, ist jeder Ueberschuss/Unterschuss eine
-    nicht gedeckte Bilanz, die der Controller aufloesen muesste.
-    """
+    """Bilanz ueber 24 h: erzeugte - verbrauchte Energie = Netto-Imbalance."""
     g = make_grid()
-    g.run(96)  # 24 h
+    g.run(96)
     e_in = sum(r.energy_in_mwh for r in g.history)
     e_out = sum(r.energy_out_mwh for r in g.history)
     net = sum(r.imbalance_mwh for r in g.history)
@@ -88,7 +80,6 @@ def test_state_round_trip(tmp_path: Path) -> None:
     assert g2.step_count == g.step_count
     assert g2.sim_time_h == pytest.approx(g.sim_time_h)
     assert [c.name for c in g2.components] == [c.name for c in g.components]
-    # weiterlaufen und vergleichen
     g.tick()
     g2.tick()
     assert g.history[-1].p_total_mw == pytest.approx(g2.history[-1].p_total_mw)
