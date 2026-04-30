@@ -1,14 +1,24 @@
-# Mittelgrosse Stadt (~150_000 Einwohner-Aequivalent), gemischter Erzeugungsmix.
+# 100%-erneuerbares Szenario einer mittelgrossen Stadt (~150_000 Einwohner-
+# Aequivalent). Enthaelt KEINE fossilen Erzeuger — Backup uebernimmt die
+# Wasserstoff-Gasturbine (H2-GuD), die ihren Brennstoff aus dem
+# Langzeit-H2-Speicher bezieht.
 #
-# Eckdaten realistisch in Anlehnung an deutsche Stadtwerk-Verhaeltnisse:
-#   - Wohnlast Spitze ~150 MW, Gewerbe ~80 MW, Industrie ~60 MW
-#   - PV-Aufdach: 100 MWp installiert (50 ha Modulflaeche)
-#   - Onshore-Wind: 10 x 4 MW WEA = 40 MW Nennleistung
-#   - Laufwasserkraft: 8 MW Grundlast
-#   - Backup: 1 Gas-GuD 250 MW, 1 Steinkohle 500 MW, 1 Biomasse 25 MW
-#   - Speicher: Quartiersbatterie 100 MWh, Pumpspeicher 1 GWh (geometrisch)
+# Eckdaten realistisch in Anlehnung an Studien zur deutschen Energiewende:
+#   - PV: 200 MWp Aufdach (100 ha Modulflaeche) — auf etwa 2x ueberinstalliert,
+#         da PV-Spitze nur ~110 MW bei realistischer Bewoelkung
+#   - Onshore-Wind: 12 x 4 MW WEA = 48 MW
+#   - Offshore-Wind-Anteil (HGUe-Bezug): 50 MW (modelliert als WindTurbine
+#         mit hoeheren Volllaststunden)
+#   - Laufwasserkraft: 12 MW
+#   - Biomasse: 25 MW (dispatchierbar)
+#   - Geothermie: 8 MW (Grundlast)
+#   - H2-Gasturbine: 200 MW (dispatchierbares Backup, wird seltener gebraucht)
+#   - Batteriespeicher: 200 MWh (Quartiersbatterie)
+#   - Pumpspeicher: ~980 MWh (geometrisch)
+#   - Wasserstoff-Langzeitspeicher: 5_000 MWh (saisonale Reserve)
+# Ergebnis: System kann mehrtaegige Dunkelflauten ohne Kohle/Gas ueberbruecken.
 
-name: stadt_mittel
+name: stadt_mittel_erneuerbar
 seed: 42
 dt_min: 15
 
@@ -19,7 +29,7 @@ weather:
   mean_temp_c: 10.0
 
 components:
-  # ----- Lasten -----
+  # ---------------- Lasten ----------------
   - type: ResidentialLoad
     name: wohnen
     base_mw: 60.0
@@ -35,19 +45,19 @@ components:
     base_mw: 60.0
     night_reduction: 0.20
 
-  # ----- Erneuerbare Erzeuger (nicht dispatchierbar) -----
+  # ---------------- Erneuerbar (nicht dispatchierbar) ----------------
   - type: PVPlant
     name: pv_aufdach
-    area_m2: 500000          # 50 ha → ca. 100 MWp bei eta=0.20
+    area_m2: 1000000          # 100 ha → ca. 200 MWp bei eta=0.20
     eta_module: 0.20
     eta_inverter: 0.97
     curtailment: 0.0
 
   - type: WindTurbine
-    name: wind_park_nord
+    name: wind_onshore
     rotor_diameter_m: 130
     p_rated_mw: 4.0
-    n_turbines: 10           # 40 MW Park
+    n_turbines: 12            # 48 MW Onshore-Park
     cp: 0.42
     v_cut_in: 3.0
     v_rated: 12.0
@@ -55,34 +65,24 @@ components:
     air_density_kg_m3: 1.225
     curtailment: 0.0
 
+  - type: WindTurbine
+    name: wind_offshore_anteil
+    rotor_diameter_m: 160
+    p_rated_mw: 10.0
+    n_turbines: 5             # 50 MW Offshore-Bezug per HGUe
+    cp: 0.48                  # bessere Stroemung auf See
+    v_cut_in: 3.0
+    v_rated: 11.0             # bei besserem Wind frueher im Plateau
+    v_cut_out: 28.0
+    air_density_kg_m3: 1.225
+    curtailment: 0.0
+
   - type: RunOfRiverHydro
     name: laufwasser_fluss
-    p_mw: 8.0
+    p_mw: 12.0
     availability: 0.95
 
-  # ----- Dispatchierbare Erzeuger -----
-  - type: GasGuDPlant
-    name: gas_kw
-    p_min_mw: 50.0
-    p_max_mw: 250.0
-    ramp_mw_per_min: 8.0
-    eta: 0.58
-    co2_kg_per_mwh: 350.0
-    fuel: natural_gas
-    setpoint_mw: 0.0
-    current_p_mw: 0.0
-
-  - type: CoalPlant
-    name: kohle_kw
-    p_min_mw: 200.0
-    p_max_mw: 500.0
-    ramp_mw_per_min: 3.0
-    eta: 0.42
-    co2_kg_per_mwh: 900.0
-    fuel: hard_coal
-    setpoint_mw: 0.0
-    current_p_mw: 0.0
-
+  # ---------------- Erneuerbar (dispatchierbar) ----------------
   - type: BiomassPlant
     name: biomasse
     p_min_mw: 5.0
@@ -94,22 +94,42 @@ components:
     setpoint_mw: 0.0
     current_p_mw: 0.0
 
-  # ----- Speicher -----
+  - type: GeothermalPlant
+    name: geothermie
+    p_min_mw: 1.0
+    p_max_mw: 8.0
+    ramp_mw_per_min: 0.3
+    eta: 0.12
+    co2_kg_per_mwh: 30.0
+    fuel: geothermal
+    setpoint_mw: 0.0
+    current_p_mw: 0.0
+
+  # ---------------- Backup: H2-Gasturbine ----------------
+  - type: HydrogenGasTurbine
+    name: h2_gasturbine
+    p_min_mw: 20.0
+    p_max_mw: 200.0
+    ramp_mw_per_min: 8.0
+    eta: 0.55
+    co2_kg_per_mwh: 5.0
+    fuel: hydrogen
+    setpoint_mw: 0.0
+    current_p_mw: 0.0
+
+  # ---------------- Speicher ----------------
   - type: BatteryStorage
     name: batterie_quartier
-    capacity_mwh: 100.0
-    soc_mwh: 50.0
-    p_max_charge_mw: 50.0
-    p_max_discharge_mw: 50.0
+    capacity_mwh: 200.0
+    soc_mwh: 100.0
+    p_max_charge_mw: 100.0
+    p_max_discharge_mw: 100.0
     eta_charge: 0.95
     eta_discharge: 0.95
-    min_soc_mwh: 10.0
+    min_soc_mwh: 20.0
     c_rate: 0.5
     setpoint_mw: 0.0
 
-  # Pumpspeicher: Geometrie nach Vorbild Goldisthal, klein skaliert.
-  # E = rho * V * g * h:  1000 * 200_000 * 9.81 * 200 / 3.6e9 ≈ 109 MWh.
-  # Wir nehmen V = 1_800_000 m^3, h = 200 m → ca. 980 MWh.
   - type: PumpedHydroStorage
     name: pumpspeicher_alpental
     head_m: 200.0
@@ -120,4 +140,18 @@ components:
     eta_discharge: 0.91
     initial_fill: 0.5
     min_soc_mwh: 50.0
+    setpoint_mw: 0.0
+
+  # Saisonaler Wasserstoff-Speicher (z. B. Salzkaverne).
+  # 5 GWh entspricht ~1.5 Wochen Vollversorgung der Stadt aus diesem Speicher
+  # bei mittlerer Last — realistisch fuer Dunkelflauten-Backup.
+  - type: HydrogenStorage
+    name: h2_speicher_saisonal
+    capacity_mwh: 5000.0
+    soc_mwh: 2500.0
+    p_max_charge_mw: 100.0     # Elektrolyseur-Leistung
+    p_max_discharge_mw: 150.0  # Brennstoffzelle / direkte Rueckverstromung
+    eta_charge: 0.65           # Elektrolyse
+    eta_discharge: 0.55        # Brennstoffzelle / H2-GuD
+    min_soc_mwh: 250.0
     setpoint_mw: 0.0

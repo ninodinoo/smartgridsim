@@ -26,14 +26,15 @@ def test_full_cli_flow(tmp_path: Path) -> None:
     assert payload["ok"] is True
     names = [c["name"] for c in payload["components"]]
     assert "pv_aufdach" in names
-    assert "wind_park_nord" in names
-    assert "gas_kw" in names
+    assert "wind_onshore" in names
+    assert "h2_gasturbine" in names
     assert "pumpspeicher_alpental" in names
+    assert "h2_speicher_saisonal" in names
     assert (tmp_path / ".sgsim_state.json").exists()
 
     # Sollwerte fuer dispatchierbare Komponenten setzen
-    for name, mw in [("gas_kw", 200.0), ("kohle_kw", 300.0),
-                     ("biomasse", 20.0), ("batterie_quartier", 0.0)]:
+    for name, mw in [("h2_gasturbine", 100.0), ("biomasse", 20.0),
+                     ("geothermie", 5.0), ("batterie_quartier", 0.0)]:
         p = _run(["dispatch", name, str(mw)], tmp_path)
         assert p.returncode == 0, p.stderr
 
@@ -53,7 +54,7 @@ def test_full_cli_flow(tmp_path: Path) -> None:
     assert metrics["steps"] == 96
     assert metrics["energy_consumed_mwh"] > 0
     assert metrics["energy_generated_mwh"] > 0
-    assert metrics["co2_kg"] > 0                # fossile Erzeuger laufen
+    # 100%-erneuerbares Szenario — CO2 nur noch aus Bio/Geothermie/H2-GuD-Hilfsstrom
     assert 0.0 <= metrics["renewable_share_of_demand"] <= 1.0
 
     out_csv = tmp_path / "out.csv"

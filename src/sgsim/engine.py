@@ -8,14 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from .components import (
+    BiomassPlant,
     Component,
     DispatchableGenerator,
+    GeothermalPlant,
     PVPlant,
     RunOfRiverHydro,
     Storage,
     TickContext,
     WindTurbine,
-    BiomassPlant,
     from_dict,
 )
 from .weather import SyntheticWeather
@@ -23,9 +24,12 @@ from .weather import SyntheticWeather
 
 DEFAULT_DT_MIN = 15.0  # Standard-Zeitschritt: 15 Minuten
 
-# Komponententypen, deren Energie als "erneuerbar erzeugt" zaehlt
+# Komponententypen, deren Energie als "erneuerbar erzeugt" zaehlt.
+# Hinweis: HydrogenGasTurbine zaehlt NICHT mit, da der H2-Brennstoff ueber
+# einen Speicher rueckverstromt wird, dessen Renewable-Anteil bereits beim
+# Laden gebucht wurde (sonst Doppelzaehlung).
 RENEWABLE_TYPES: tuple[type[Component], ...] = (
-    PVPlant, WindTurbine, RunOfRiverHydro, BiomassPlant,
+    PVPlant, WindTurbine, RunOfRiverHydro, BiomassPlant, GeothermalPlant,
 )
 
 

@@ -62,11 +62,11 @@ def test_apply_setpoint() -> None:
     grid = build_grid(SCENARIO, seed=42)
     warnings = apply_action(
         grid,
-        {"actions": [{"component": "gas_kw", "setpoint_mw": 200.0}]},
+        {"actions": [{"component": "h2_gasturbine", "setpoint_mw": 100.0}]},
     )
     assert warnings == []
-    gas = next(c for c in grid.components if c.name == "gas_kw")
-    assert gas.setpoint_mw == 200.0
+    h2 = next(c for c in grid.components if c.name == "h2_gasturbine")
+    assert h2.setpoint_mw == 100.0
 
 
 def test_apply_curtailment() -> None:

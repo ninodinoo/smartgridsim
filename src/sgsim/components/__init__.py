@@ -16,6 +16,8 @@ from .dispatchable import (
     CoalPlant,
     DispatchableGenerator,
     GasGuDPlant,
+    GeothermalPlant,
+    HydrogenGasTurbine,
 )
 from .storage import (
     BatteryStorage,
@@ -37,6 +39,8 @@ __all__ = [
     "GasGuDPlant",
     "CoalPlant",
     "BiomassPlant",
+    "GeothermalPlant",
+    "HydrogenGasTurbine",
     "Storage",
     "BatteryStorage",
     "PumpedHydroStorage",
@@ -56,6 +60,8 @@ COMPONENT_REGISTRY: dict[str, type[Component]] = {
     "GasGuDPlant": GasGuDPlant,
     "CoalPlant": CoalPlant,
     "BiomassPlant": BiomassPlant,
+    "GeothermalPlant": GeothermalPlant,
+    "HydrogenGasTurbine": HydrogenGasTurbine,
     "BatteryStorage": BatteryStorage,
     "PumpedHydroStorage": PumpedHydroStorage,
     "HydrogenStorage": HydrogenStorage,

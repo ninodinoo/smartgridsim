@@ -19,10 +19,19 @@ Der Aufrufer ergänzt nur Working Directory und Seed.
 3. **Energieverschwendung vermeiden** — bei Überschuss Speicher laden, erst
    wenn Speicher voll Curtailment auf PV/Wind.
 
-**Vergleichspunkte (typische 24-h-Werte mit Seed 42, Szenario `stadt_mittel`):**
-- Naive (keine Steuerung): CO₂ ≈ 7.3 t, 0 Brownouts, 6 459 MWh Surplus
-- RuleBased (Heuristik):   CO₂ ≈ 4.3 t, 24 Brownouts, 536 MWh Surplus
-- Ziel: CO₂ deutlich unter 4.3 t, Brownouts möglichst < 30/96 Ticks.
+**Wichtiger Hinweis:** Das Default-Szenario (`stadt_mittel`) ist
+**100 % erneuerbar** — keine fossilen Erzeuger. Backup ist eine
+H2-Gasturbine, die Wasserstoff aus einem saisonalen Speicher rückverstromt.
+CO₂ ist von vornherein klein; Versorgungssicherheit ist die schwierigere
+Größe. Die Frage der Seminararbeit ist: **kann eine KI-Steuerung in einem
+volatilen 100 %-erneuerbaren Mix Brownouts senken, ohne CO₂ steigen zu
+lassen oder Energie zu verschwenden?**
+
+**Vergleichspunkte (typische 24-h-Werte mit Seed 42):**
+- Naive (statische Sollwerte): CO₂ ≈ 33 kg, 36 Brownouts, 764 MWh Surplus
+- RuleBased (Heuristik):       CO₂ ≈ 28 kg, 54 Brownouts, 123 MWh Surplus
+- Ziel: Brownouts senken auf möglichst nahe 0, ohne dabei CO₂ deutlich
+  zu erhöhen oder mehr als ~200 MWh Surplus zu produzieren.
 
 ---
 
@@ -69,63 +78,83 @@ sgsim export --out result.csv    # vollständige Zeitreihe als CSV
 - `industrie` — BDEW-L0-ähnlich, ~48–60 MW (nachts reduziert)
 
 **Erneuerbar (nicht dispatchierbar):**
-- `pv_aufdach` — Peak ca. **55 MW** bei `cloudiness=0.4` (Standard), nicht 100!
-- `wind_park_nord` — variabel 0–40 MW, mittlere Geschwindigkeit ~7 m/s
-- `laufwasser_fluss` — quasi konstant ~7.6 MW
+- `pv_aufdach` — 200 MWp installiert, Peak ca. **110 MW** bei `cloudiness=0.4`
+- `wind_onshore` — 12×4 MW Park, variabel 0–48 MW
+- `wind_offshore_anteil` — 5×10 MW (HGÜ-Bezug), höhere Volllaststunden, 0–50 MW
+- `laufwasser_fluss` — quasi konstant ~12 MW
 
 **Dispatchierbar (Sollwert mit `dispatch`):**
 | Name | P_min | P_max | η | CO₂ kg/MWh | Rampe MW/min |
 |---|---|---|---|---|---|
-| `gas_kw` (GuD) | 50 | 250 | 0.58 | **350** | 8 |
-| `kohle_kw` | 200 | 500 | 0.42 | **900** | 3 |
 | `biomasse` | 5 | 25 | 0.35 | **25** | 0.5 |
+| `geothermie` | 1 | 8 | 0.12 | **30** | 0.3 |
+| `h2_gasturbine` | 20 | 200 | 0.55 | **5** | 8 |
+
+Die **H2-Gasturbine** ist das einzige Backup im 100 %-erneuerbaren System —
+sie verbrennt Wasserstoff aus dem H₂-Langzeitspeicher (sauber, aber teuer
+über Round-Trip-Wirkungsgrad ~0.36).
 
 **Speicher (Sollwert mit `dispatch`):**
 | Name | Kapazität | P_charge / P_discharge | η_rt |
 |---|---|---|---|
-| `batterie_quartier` | 100 MWh | 50 / 50 MW | 0.90 |
+| `batterie_quartier` | 200 MWh | 100 / 100 MW | 0.90 |
 | `pumpspeicher_alpental` | ~980 MWh | 200 / 220 MW | 0.80 |
+| `h2_speicher_saisonal` | 5 000 MWh | 100 / 150 MW | 0.36 |
+
+Die **drei Speicher decken drei Zeitskalen ab**:
+- Batterie: Sekunden bis Stunden
+- Pumpspeicher: Stunden bis Tage
+- H₂-Speicher: Tage bis Wochen (saisonal)
 
 ### Wichtige Modell-Eigenheiten
-- **Kohle-Sprung**: Kohle hat P_min=200. Wenn der Sollwert unter P_min fällt,
-  schaltet die Engine sie sofort auf 0 ab. Wieder hochfahren ist möglich, dauert
-  aber bei langen Ramps mehrere Ticks.
 - **Biomasse-Anlauf**: Rampe nur 0.5 MW/min ⇒ nach Setpoint 25 erreicht sie
   diese erst nach ~6 Ticks. Plane den Anlauf ein (kleines Defizit zu Beginn).
-- **Forecast = Realität**: das Wettermodell ist stochastisch (mit Rauschen),
+- **H2-Gasturbine** rampt schnell (8 MW/min) und ist das primäre Backup —
+  nutze sie aktiv, sie ist quasi CO₂-frei.
+- **H2-Speicher Round-Trip 0.36** ⇒ ineffizient, aber **die einzige saisonale
+  Reserve**. Im 100 %-Erneuerbar-System ist sie unverzichtbar gegen
+  Dunkelflauten.
+- **Forecast**: das Wettermodell ist stochastisch (mit Rauschen),
   kann aber kurzfristig vorhergesagt werden — der Forecast für den nächsten
   Tick ist im `state`-Output enthalten.
 
 ---
 
-## 4. Tagesgang-Skizze (zur Strategieplanung)
+## 4. Tagesgang-Skizze (zur Strategieplanung, Defaultwetter)
 
 | Zeit | Last (MW) | PV (MW) | Wind (MW) | Strategie-Tipp |
 |---|---|---|---|---|
-| 0–5 | ~120 | 0 | ~10 | Bio voll, Kohle aus oder P_min, Pumpspeicher proaktiv laden |
-| 5–7 | 120→230 | 0 | ~10–15 | Gas hochfahren, Speicher bereithalten |
-| 7–8 | **Spitze ~270** | 0–20 | ~15 | Gas Volllast oder Speicher entladen |
-| 8–12 | 200–280 | 20–55 | ~15 | Gas mittel, mit PV-Anstieg runter |
-| 12–15 | 200–220 | **Peak ~55** | ~15 | Gas niedrig, Speicher laden |
-| 15–18 | 220→280 | 55→25 | ~10–20 | Gas wieder hoch, Speicher entladen |
-| 18–20 | **Spitze ~280** | 25→0 | ~10 | Volllast, alle Reserven |
-| 20–24 | 280→120 | 0 | ~10 | Gas runter, Speicher laden für nächsten Tag |
+| 0–5 | ~120 | 0 | ~20 | Bio+Geothermie voll, H2-GuD niedrig, Speicher passiv/leicht laden |
+| 5–7 | 120→230 | 0 | ~20–30 | H2-GuD hochfahren, Pumpspeicher entladen ab ~6 |
+| 7–8 | **Spitze ~270** | 0–40 | ~25 | H2-GuD Volllast, Batterie + Pumpspeicher entladen |
+| 8–12 | 200–280 | 40–110 | ~25 | H2-GuD runter mit PV-Anstieg, Speicher laden |
+| 12–15 | 200–220 | **Peak ~110** | ~25 | H2-GuD aus, alle Speicher laden, ggf. PV-Curtailment |
+| 15–18 | 220→280 | 110→50 | ~20–30 | H2-GuD wieder hoch, Speicher bereithalten |
+| 18–20 | **Spitze ~280** | 50→0 | ~15 | Volllast Backup + Batterie + Pumpspeicher entladen |
+| 20–24 | 280→120 | 0 | ~15 | H2-GuD runter, Speicher leicht laden für nächsten Tag |
 
 ---
 
-## 5. Strategie-Inspiration
+## 5. Strategie-Inspiration (im 100 %-erneuerbaren Setup)
 
-Eine dokumentierte Strategie liegt unter `docs/claude_live_run_seed42.md`.
-Kernideen, die sich bewährt haben:
-- **Biomasse immer voll** — billigste dispatchierbare Erneuerbare.
-- **Kohle ausschalten**, sobald Gas allein die Last decken kann
-  (Gas 350 vs. Kohle 900 kg CO₂/MWh ⇒ −61 % CO₂ pro MWh).
-- **Pumpspeicher in der Nacht laden** mit dem Kohle-Mindestlast-Surplus
-  bzw. mit Wind-Überschuss; entladen für Morgen- (7:00) und Abendspitze (19:00).
-- **PV-Modell ehrlich einschätzen** — bei Standardbewölkung Peak nur ~55 MW,
-  nicht überschätzen, sonst Brownouts mittags.
-- **Nach jedem Block prüfen**: Brownouts → Erzeugung hoch; Surplus → Speicher
-  laden oder Erzeugung runter. Adaptive Korrektur ist der LLM-Vorteil.
+Kernideen, die sich für ein 100 %-erneuerbares Smart Grid bewähren:
+
+- **Biomasse + Geothermie immer voll** — günstigste dispatchierbare
+  Erneuerbare-Bausteine, fast keine CO₂-Emission.
+- **H₂-Gasturbine als primäres Backup** — schnell rampbar, sauber im Betrieb.
+  Aber: jedes MWh aus der Turbine "kostet" ~1.8 MWh aus dem H₂-Speicher
+  (Round-Trip 0.36). Sie sparsam einsetzen.
+- **Drei-Stufen-Speicherstrategie:**
+  - Batterie: kurzfristige Schwankungen (PV-Wolken, Wind-Böen)
+  - Pumpspeicher: Tageszyklus (laden mittags, entladen abends)
+  - H₂-Speicher: saisonale Reserve, bei mehrtägigen Dunkelflauten
+- **PV-Peak realistisch einschätzen** — bei `cloudiness=0.4` nur ~110 MW,
+  nicht 200! Nicht zu optimistisch planen.
+- **Nach jedem Block prüfen**: Brownouts → mehr Backup; Surplus → Speicher
+  laden, dann Curtailment. Adaptive Korrektur ist der LLM-Vorteil.
+
+Eine alte Strategie für den fossilen Mix liegt in
+`docs/claude_live_run_seed42.md` — sie ist nicht 1:1 übertragbar.
 
 ---
 

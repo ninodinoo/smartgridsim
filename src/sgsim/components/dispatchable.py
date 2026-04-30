@@ -117,3 +117,44 @@ class BiomassPlant(DispatchableGenerator):
     eta: float = 0.35
     co2_kg_per_mwh: float = 25.0
     fuel: str = "biomass"
+
+
+@dataclass
+class GeothermalPlant(DispatchableGenerator):
+    """Geothermisches Kraftwerk.
+
+    Tiefengeothermie (Hot-Dry-Rock / hydrothermal), liefert quasi grundlastig.
+    Im Modell als dispatchierbare Anlage gefuehrt — kann zur Frequenzregelung
+    runtergefahren werden, lebt aber typisch auf hoher Auslastung.
+    Wirkungsgrad ist niedrig (binaeres ORC-Verfahren), CO2-Bilanz vorsichtig
+    angesetzt: ~30 kg/MWh aus Begleitgasen + Hilfsstrom.
+    """
+    p_min_mw: float = 1.0
+    p_max_mw: float = 10.0
+    ramp_mw_per_min: float = 0.5
+    eta: float = 0.12
+    co2_kg_per_mwh: float = 30.0
+    fuel: str = "geothermal"
+
+
+@dataclass
+class HydrogenGasTurbine(DispatchableGenerator):
+    """Wasserstoff-Gasturbine (rueckverstromter H2-Speicher).
+
+    Dispatchierbares Backup-Kraftwerk in einem 100%-erneuerbaren System:
+    bezieht Wasserstoff aus dem H2-Langzeitspeicher (HydrogenStorage) und
+    verbrennt ihn in einer GuD-aehnlichen Anlage. CO2 emissionsfrei am
+    Schornstein (nur Wasserdampf), Restemissionen aus Hilfsstrom.
+
+    Wichtige Vereinfachung: das Modell zaehlt KEIN H2 aus einem konkreten
+    Speicher ab — die Brennstoffversorgung wird hier als 'unbegrenzt'
+    angenommen. Wer das streng mit dem HydrogenStorage koppeln moechte,
+    muss den Verbrauch aus dem H2-Speicher als zusaetzliche Senke
+    modellieren (siehe docs/methodology.md, Abschnitt 'Vereinfachungen').
+    """
+    p_min_mw: float = 20.0
+    p_max_mw: float = 200.0
+    ramp_mw_per_min: float = 8.0       # GuD-aehnlich, schnell rampbar
+    eta: float = 0.55                   # H2-GuD heute Stand der Technik
+    co2_kg_per_mwh: float = 5.0         # nahezu null direkt
+    fuel: str = "hydrogen"
