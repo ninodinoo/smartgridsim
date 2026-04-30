@@ -88,11 +88,41 @@ sgsim export --out tag.csv            # Auswertung
 
 `--` vor negativen Werten ist noetig, damit Click sie nicht als Option liest.
 
-## Geplant (M3+)
+## Experimente: Strategien gegeneinander laufen lassen
 
-- Regelbasierter Controller (Merit-Order + einfache Speicherregel)
+```bash
+# Naive Baseline (statische fossile Sollwerte, kein Eingriff)
+sgsim experiment run --controller naive --steps 96 --seed 42 \
+                     --out results/naive.csv
+
+# Regelbasierter Smart-Controller (Merit-Order + Speicherheuristik)
+sgsim experiment run --controller rule_based --steps 96 --seed 42 \
+                     --out results/rule_based.csv
+
+# Vergleich (erste Datei = Baseline; Deltas in % zur Baseline)
+sgsim experiment compare results/naive.csv results/rule_based.csv
+```
+
+Erste Vergleichszahlen aus dem Default-Szenario `stadt_mittel` (24 h, Seed 42):
+
+| Metrik | Naive | RuleBased | Delta |
+|---|---|---|---|
+| Erzeugte Energie [MWh] | 11 161 | 5 827 | −47.8 % |
+| CO₂ [t] | 7.30 | 4.33 | **−40.6 %** |
+| CO₂ pro MWh Bedarf [kg] | 1 552 | 813 | **−47.6 %** |
+| Surplus (verschwendet) [MWh] | 6 459 | 536 | **−91.7 %** |
+| Brownout-Ticks | 0 | 24 | (siehe unten) |
+
+Die regelbasierte Strategie reduziert Energieverschwendung und CO2 dramatisch,
+hat aber 24/96 Brownout-Ticks (~25 % der Zeit) wegen der Anfahrtraegheit der
+Kohle und der begrenzten Speicherreserven. Genau dieser Trade-off ist der
+Spielraum, den die KI-Steuerung schliessen muss.
+
+## Geplant (M4+)
+
 - KI-Run-Skript: Schleife, in der Claude pro Tick Setpoints vergibt
+  (CLI-Modus mit `.sgsim_state.json` ist dafuer bereits vollstaendig)
 - Sektorkopplung: V2G-E-Auto-Flotte, Waermepumpe, Elektrolyseur
 - Netzleitungen mit I²R-Verlusten, Frequenzmodell
 - Echte Lastprofile (BDEW H0/G0/L0 als CSV), DWD-/PVGIS-Wetterdaten
-- Statistische Auswertung mehrerer Laeufe (Welch-t, Cohen's d)
+- Statistische Auswertung mehrerer Seeds (Welch-t, Cohen's d), Plots

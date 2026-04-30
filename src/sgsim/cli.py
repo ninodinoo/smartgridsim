@@ -20,7 +20,15 @@ import click
 import yaml
 
 from .components import from_dict
+from .controllers import CONTROLLER_REGISTRY
 from .engine import Grid
+from .experiment import (
+    build_grid,
+    compare_runs,
+    export_csv,
+    run_experiment,
+    write_metrics_sidecar,
+)
 from .weather import SyntheticWeather
 
 
@@ -290,6 +298,68 @@ def export(out: str) -> None:
                 row[f"D_{c}_{k}"] = r.component_details.get(c, {}).get(k, "")
             w.writerow(row)
     _emit({"ok": True, "rows": len(grid.history), "out": str(out_path.resolve())})
+
+
+# ---------------------------------------------------------------------------
+# experiment-Subgruppe
+# ---------------------------------------------------------------------------
+
+@cli.group()
+def experiment() -> None:
+    """Self-contained Experimente fuer den Strategie-Vergleich."""
+
+
+@experiment.command("run")
+@click.option("--scenario", type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="Pfad zur Szenario-YAML (Default: stadt_mittel).")
+@click.option("--controller", "controller_name",
+              type=click.Choice(["none", *CONTROLLER_REGISTRY.keys()]),
+              default="rule_based",
+              help="Welche Steuerungsstrategie soll gefahren werden?")
+@click.option("--steps", type=int, default=96,
+              help="Anzahl Zeitschritte (Default 96 = 24 h).")
+@click.option("--seed", type=int, default=None,
+              help="Wetter-Seed (ueberschreibt den im Szenario).")
+@click.option("--out", type=click.Path(dir_okay=False), required=True,
+              help="Pfad fuer CSV-Output (eine Zeile je Tick).")
+def experiment_run(scenario: str | None, controller_name: str,
+                   steps: int, seed: int | None, out: str) -> None:
+    """Einen vollstaendigen Vergleichslauf ausfuehren."""
+    if scenario is None:
+        scenario = str(Path(__file__).parent / "scenarios" / "stadt_mittel.yaml")
+    grid, _ctrl = run_experiment(Path(scenario), controller_name, steps, seed)
+    out_path = Path(out)
+    rows = export_csv(grid, out_path)
+    sidecar = write_metrics_sidecar(grid, out_path, controller_name)
+    _emit({
+        "ok": True,
+        "controller": controller_name,
+        "scenario": grid.name,
+        "seed": grid.seed,
+        "steps": steps,
+        "rows": rows,
+        "out": str(out_path.resolve()),
+        "metrics_sidecar": str(sidecar.resolve()),
+        "metrics": grid.metrics(),
+    })
+
+
+@experiment.command("compare")
+@click.argument("csv_paths", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+def experiment_compare(csv_paths: tuple[str, ...]) -> None:
+    """Mehrere Runs gegenueberstellen.
+
+    Der erste Pfad ist die Baseline; weitere Runs werden in Prozent-Differenz
+    zur Baseline ausgegeben.
+    """
+    if len(csv_paths) < 2:
+        click.echo(json.dumps({"error": "need_two_runs",
+                               "hint": "mindestens zwei CSV-Pfade angeben"}),
+                   err=True)
+        sys.exit(2)
+    result = compare_runs([Path(p) for p in csv_paths])
+    _emit(result)
 
 
 if __name__ == "__main__":
