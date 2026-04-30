@@ -19,6 +19,7 @@ from typing import Any
 import click
 import yaml
 
+from . import ai as _ai  # noqa: F401  Side-Effekt: registriert KI-Controller
 from .components import from_dict
 from .controllers import CONTROLLER_REGISTRY
 from .engine import Grid

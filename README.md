@@ -118,10 +118,63 @@ hat aber 24/96 Brownout-Ticks (~25 % der Zeit) wegen der Anfahrtraegheit der
 Kohle und der begrenzten Speicherreserven. Genau dieser Trade-off ist der
 Spielraum, den die KI-Steuerung schliessen muss.
 
-## Geplant (M4+)
+## KI-Steuerung (M4)
 
-- KI-Run-Skript: Schleife, in der Claude pro Tick Setpoints vergibt
-  (CLI-Modus mit `.sgsim_state.json` ist dafuer bereits vollstaendig)
+Die KI-Controller laufen im selben Experiment-Mechanismus, kommunizieren
+ueber JSON-Snapshot/Action mit der Engine.
+
+### Demo ohne API-Key: Random-AI
+
+```bash
+sgsim experiment run --controller random_ai --steps 96 --seed 42 \
+                     --out results/random_ai.csv
+sgsim experiment compare results/naive.csv results/random_ai.csv
+```
+
+Erwartung: zufaellige Steuerung schlaegt nicht einmal die naive Strategie —
+sie demonstriert nur, dass die Pipeline korrekt funktioniert.
+
+### Anthropic-Claude als Controller
+
+Voraussetzungen:
+
+```bash
+pip install anthropic
+export ANTHROPIC_API_KEY=sk-ant-...    # bash/zsh
+$env:ANTHROPIC_API_KEY = "sk-ant-..."  # PowerShell
+```
+
+Dann:
+
+```bash
+sgsim experiment run --controller anthropic_ai --steps 96 --seed 42 \
+                     --out results/anthropic_ai.csv
+sgsim experiment compare results/naive.csv results/rule_based.csv \
+                         results/anthropic_ai.csv
+```
+
+Der Adapter nutzt Prompt-Caching fuer den System-Prompt (5-min-TTL),
+sodass die Token-Kosten ueber einen Lauf weitgehend auf den variablen
+Zustand pro Tick beschraenkt sind.
+
+### Vergleich Naive vs. RuleBased vs. RandomAI (24 h, Seed 42)
+
+| Metrik | Naive | RuleBased | RandomAI |
+|---|---|---|---|
+| CO₂ [t] | 7.30 | **4.33** | 7.62 |
+| CO₂ pro MWh Bedarf | 1 552 | **813** | 1 223 |
+| Surplus [MWh] | 6 459 | **536** | 6 661 |
+| Brownout-Ticks | 0 | 24 | 5 |
+| Spitzen-Surplus [MW] | 332 | **109** | 656 |
+
+RandomAI emittiert mehr CO₂ als die naive Steuerung und produziert
+ausserdem extreme Spitzen-Ueberschuesse. Die regelbasierte Strategie
+bleibt klar dominant; die offene Frage fuer die Seminararbeit ist, ob
+ein LLM-basierter Controller ihre Brownout-Schwaeche beseitigt, ohne
+die CO₂-Vorteile zu verlieren.
+
+## Geplant (M5+)
+
 - Sektorkopplung: V2G-E-Auto-Flotte, Waermepumpe, Elektrolyseur
 - Netzleitungen mit I²R-Verlusten, Frequenzmodell
 - Echte Lastprofile (BDEW H0/G0/L0 als CSV), DWD-/PVGIS-Wetterdaten
