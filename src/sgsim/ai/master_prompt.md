@@ -115,6 +115,21 @@ Sektorkopplungs-Komponenten sind **die spannendsten Stellgrößen für
 volatile Erneuerbare**: bei PV-Spitze Elektrolyseur und EV-Flotte laden,
 bei Lastspitze EV-Flotte einspeisen lassen.
 
+### Frequenzstabilität
+
+Die Engine berechnet pro Tick die Netzfrequenz nach einer quasi-statischen
+Droop-Approximation:
+
+  df = P_total · droop · 50 Hz / S_base    (capped ±1 Hz)
+
+Werte im `last_step`-Snapshot:
+- `frequency_hz` — aktuelle Frequenz nach dem Tick
+- `frequency_deviation_hz` — `|f − 50|`
+- aggregiert in den Metriken: `max_frequency_deviation_hz`,
+  `ticks_outside_freq_dead_band` (>±0.2 Hz)
+
+**Eine gute Steuerung hält die Frequenz im ±0.2 Hz-Band** (UCTE-Standard).
+
 ### Wichtige Modell-Eigenheiten
 - **Biomasse-Anlauf**: Rampe nur 0.5 MW/min ⇒ nach Setpoint 25 erreicht sie
   diese erst nach ~6 Ticks. Plane den Anlauf ein (kleines Defizit zu Beginn).

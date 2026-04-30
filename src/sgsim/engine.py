@@ -19,6 +19,7 @@ from .components import (
     WindTurbine,
     from_dict,
 )
+from .frequency import F_NOMINAL_HZ, FrequencyState
 from .weather import SyntheticWeather
 
 
@@ -51,6 +52,8 @@ class TickRecord:
     imbalance_mwh: float                          # P_total * dt
     co2_kg: float                                 # CO2-Emissionen dieses Ticks
     renewable_energy_mwh: float                   # erneuerbar erzeugte Energie
+    frequency_hz: float                           # Netzfrequenz nach diesem Tick
+    frequency_deviation_hz: float                 # |f - 50 Hz|
 
 
 @dataclass
@@ -64,6 +67,7 @@ class Grid:
     step_count: int = 0
     components: list[Component] = field(default_factory=list)
     weather: SyntheticWeather = field(default_factory=lambda: SyntheticWeather())
+    frequency: FrequencyState = field(default_factory=FrequencyState)
     history: list[TickRecord] = field(default_factory=list)
 
     @property
@@ -124,6 +128,10 @@ class Grid:
             if isinstance(c, RENEWABLE_TYPES) and p > 0.0:
                 e_renewable += p * self.dt_h
 
+        # Frequenz nachfuehren (vereinfachte Swing-Equation).
+        # dt in Sekunden fuer das Frequenzmodell.
+        f_hz = self.frequency.step(p_total, self.dt_h * 3600.0)
+
         rec = TickRecord(
             step=self.step_count,
             sim_time_h=self.sim_time_h,
@@ -139,6 +147,8 @@ class Grid:
             imbalance_mwh=p_total * self.dt_h,
             co2_kg=co2_kg,
             renewable_energy_mwh=e_renewable,
+            frequency_hz=f_hz,
+            frequency_deviation_hz=abs(f_hz - F_NOMINAL_HZ),
         )
         self.history.append(rec)
         self.sim_time_h += self.dt_h
@@ -179,6 +189,13 @@ class Grid:
             default=0.0,
         )
 
+        # Frequenz-Statistik
+        max_freq_dev = max((r.frequency_deviation_hz for r in self.history),
+                           default=0.0)
+        ticks_outside_dead_band = sum(
+            1 for r in self.history if r.frequency_deviation_hz > 0.2
+        )
+
         return {
             "steps": len(self.history),
             "sim_hours": self.sim_time_h,
@@ -193,6 +210,8 @@ class Grid:
             "brownout_steps": brownout_steps,
             "peak_deficit_mw": peak_load,
             "peak_surplus_mw": max_surplus,
+            "max_frequency_deviation_hz": max_freq_dev,
+            "ticks_outside_freq_dead_band": ticks_outside_dead_band,
         }
 
     # -------------------------------------------------------------------
@@ -208,6 +227,7 @@ class Grid:
             "step_count": self.step_count,
             "components": [c.to_dict() for c in self.components],
             "weather": asdict(self.weather) | {"_class": "SyntheticWeather"},
+            "frequency": asdict(self.frequency),
             "history": [asdict(r) for r in self.history],
         }
 
@@ -221,6 +241,9 @@ class Grid:
         components = [from_dict(d) for d in data["components"]]
         history = [TickRecord(**r) for r in data.get("history", [])]
 
+        freq_data = data.get("frequency", {})
+        frequency = FrequencyState(**freq_data) if freq_data else FrequencyState()
+
         return cls(
             name=data["name"],
             seed=data["seed"],
@@ -229,6 +252,7 @@ class Grid:
             step_count=data["step_count"],
             components=components,
             weather=weather,
+            frequency=frequency,
             history=history,
         )
 

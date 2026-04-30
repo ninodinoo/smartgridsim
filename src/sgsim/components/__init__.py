@@ -31,6 +31,12 @@ from .sector_coupling import (
     HeatPumpLoad,
 )
 
+# Data-Loader-Komponenten — registriert, damit YAML-Szenarien sie nutzen koennen
+def _register_data_loader_types() -> None:
+    """Lazy-Import von data_loaders, um Circular-Imports zu vermeiden."""
+    from sgsim.data_loaders import CsvProfileLoad
+    COMPONENT_REGISTRY["CsvProfileLoad"] = CsvProfileLoad
+
 __all__ = [
     "Component",
     "TickContext",
@@ -77,6 +83,9 @@ COMPONENT_REGISTRY: dict[str, type[Component]] = {
     "EVFleet": EVFleet,
     "Electrolyzer": Electrolyzer,
 }
+
+# CsvProfileLoad nachregistrieren (Lazy, vermeidet Zirkel-Import)
+_register_data_loader_types()
 
 
 def from_dict(data: dict[str, Any]) -> Component:
