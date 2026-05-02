@@ -109,7 +109,7 @@ Pumpspeicher (Stunden–Tage), H₂-Speicher (Tage–Wochen / saisonal).
 |---|---|---|
 | `waermepumpen_aggregat` | bis ~2× Bedarf | thermischer Pufferspeicher 100 MWh; setpoint > 0 = Strombezug, negativ am Knoten |
 | `ev_flotte` | 55 MW Spitze (V2G) | bidirektional: setpoint > 0 = entladen ins Netz, < 0 = laden |
-| `elektrolyseur` | 50 MW | nur Last (Strom → H₂); setpoint > 0 = Strombezug |
+| `elektrolyseur` | 50 MW | Strom → H₂; lädt den saisonalen H₂-Speicher; setpoint > 0 = Strombezug |
 
 Sektorkopplungs-Komponenten sind **die spannendsten Stellgrößen für
 volatile Erneuerbare**: bei PV-Spitze Elektrolyseur und EV-Flotte laden,

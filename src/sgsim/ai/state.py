@@ -31,6 +31,7 @@ from ..components import (
     CommercialLoad,
     DispatchableGenerator,
     GasGuDPlant,
+    HydrogenStorage,
     IndustrialLoad,
     PVPlant,
     PumpedHydroStorage,
@@ -61,8 +62,13 @@ def _component_view(c: object) -> dict[str, Any]:
             "co2_kg_per_mwh": c.co2_kg_per_mwh,
         }
     if isinstance(c, Storage):
+        storage_type = "battery"
+        if isinstance(c, PumpedHydroStorage):
+            storage_type = "pumped_hydro"
+        elif isinstance(c, HydrogenStorage):
+            storage_type = "hydrogen_storage"
         return {
-            "type": "pumped_hydro" if isinstance(c, PumpedHydroStorage) else "battery",
+            "type": storage_type,
             "p_now_mw": 0.0,                      # echte Leistung kommt aus last_step
             "setpoint_mw": c.setpoint_mw,
             "soc_mwh": c.soc_mwh,
@@ -72,6 +78,7 @@ def _component_view(c: object) -> dict[str, Any]:
             "p_max_discharge_mw": c.p_max_discharge_mw,
             "eta_charge": c.eta_charge,
             "eta_discharge": c.eta_discharge,
+            "round_trip_eta": c.eta_charge * c.eta_discharge,
         }
     if isinstance(c, (PVPlant, WindTurbine)):
         return {

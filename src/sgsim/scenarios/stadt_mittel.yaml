@@ -177,7 +177,7 @@ components:
     name: h2_speicher_saisonal
     capacity_mwh: 5000.0
     soc_mwh: 2500.0
-    p_max_charge_mw: 100.0     # Elektrolyseur-Leistung
+    p_max_charge_mw: 100.0     # zusaetzliche interne Power-to-Gas-Leistung
     p_max_discharge_mw: 150.0  # Brennstoffzelle / direkte Rueckverstromung
     eta_charge: 0.65           # Elektrolyse
     eta_discharge: 0.55        # Brennstoffzelle / H2-GuD

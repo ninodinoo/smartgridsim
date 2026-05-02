@@ -133,6 +133,74 @@ def test_storage_soc_within_bounds(seed: int) -> None:
             assert c.min_soc_mwh - 1e-6 <= c.soc_mwh <= c.capacity_mwh + 1e-6
 
 
+def test_h2_turbine_consumes_hydrogen_storage() -> None:
+    from sgsim.components import HydrogenGasTurbine, HydrogenStorage, ResidentialLoad
+    from sgsim.engine import Grid
+    from sgsim.weather import SyntheticWeather
+
+    h2 = HydrogenStorage(
+        name="h2",
+        capacity_mwh=1000.0,
+        soc_mwh=100.0,
+        min_soc_mwh=10.0,
+        p_max_charge_mw=100.0,
+        p_max_discharge_mw=100.0,
+    )
+    turbine = HydrogenGasTurbine(name="h2_gt", setpoint_mw=40.0, current_p_mw=40.0)
+    grid = Grid(
+        components=[
+            turbine,
+            h2,
+            ResidentialLoad(name="load", base_mw=1.0, peak_mw=0.0),
+        ],
+        weather=SyntheticWeather(seed=1),
+    )
+    before = h2.soc_mwh
+    rec = grid.tick()
+    assert rec.components["h2_gt"] > 0.0
+    assert h2.soc_mwh < before
+
+
+def test_h2_turbine_limited_by_empty_hydrogen_storage() -> None:
+    from sgsim.components import HydrogenGasTurbine, HydrogenStorage
+    from sgsim.engine import Grid
+    from sgsim.weather import SyntheticWeather
+
+    h2 = HydrogenStorage(
+        name="h2",
+        capacity_mwh=1000.0,
+        soc_mwh=10.0,
+        min_soc_mwh=10.0,
+        p_max_charge_mw=100.0,
+        p_max_discharge_mw=100.0,
+    )
+    turbine = HydrogenGasTurbine(name="h2_gt", setpoint_mw=100.0, current_p_mw=100.0)
+    grid = Grid(components=[turbine, h2], weather=SyntheticWeather(seed=1))
+    rec = grid.tick()
+    assert rec.components["h2_gt"] == pytest.approx(0.0)
+
+
+def test_electrolyzer_charges_hydrogen_storage() -> None:
+    from sgsim.components import Electrolyzer, HydrogenStorage
+    from sgsim.engine import Grid
+    from sgsim.weather import SyntheticWeather
+
+    h2 = HydrogenStorage(
+        name="h2",
+        capacity_mwh=1000.0,
+        soc_mwh=100.0,
+        min_soc_mwh=10.0,
+        p_max_charge_mw=100.0,
+        p_max_discharge_mw=100.0,
+    )
+    el = Electrolyzer(name="el", p_max_mw=50.0, eta_h2=0.70, setpoint_mw=20.0)
+    grid = Grid(components=[el, h2], weather=SyntheticWeather(seed=1))
+    before = h2.soc_mwh
+    rec = grid.tick()
+    assert rec.components["el"] == pytest.approx(-20.0)
+    assert h2.soc_mwh == pytest.approx(before + 20.0 * 0.70 * grid.dt_h)
+
+
 @pytest.mark.parametrize("seed", [1, 42])
 def test_frequency_bounded_for_any_seed(seed: int) -> None:
     """Property: Frequenz bleibt im Cap-Bereich [49.0, 51.0]."""

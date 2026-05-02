@@ -85,6 +85,23 @@ def test_state_round_trip(tmp_path: Path) -> None:
     assert g.history[-1].p_total_mw == pytest.approx(g2.history[-1].p_total_mw)
 
 
+def test_weather_calls_are_idempotent() -> None:
+    w = SyntheticWeather(seed=123)
+    assert w.irradiance(12.0) == pytest.approx(w.irradiance(12.0))
+    assert w.wind_speed(12.0) == pytest.approx(w.wind_speed(12.0))
+
+
+def test_extra_weather_reads_do_not_change_next_tick() -> None:
+    g1 = make_grid(seed=123)
+    g2 = make_grid(seed=123)
+    _ = g2.weather.irradiance(0.0)
+    _ = g2.weather.wind_speed(0.0)
+    r1 = g1.tick()
+    r2 = g2.tick()
+    assert r2.irradiance == pytest.approx(r1.irradiance)
+    assert r2.wind == pytest.approx(r1.wind)
+
+
 def test_curtailment_reduces_pv() -> None:
     g = make_grid()
     g.sim_time_h = 12.0

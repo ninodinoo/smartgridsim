@@ -83,8 +83,11 @@ def compute_economics(grid, params: EconomicsParams | None = None) -> dict:
         # CO2-Zertifikate
         co2_cost += (r.co2_kg / 1000.0) * p.co2_price_eur_per_t
 
-        # Erzeugte Energie wird "vermarktet"
-        market_revenue += r.energy_in_mwh * p.market_price_eur_per_mwh
+        # Erlös nur für tatsächlich bediente echte Last. Speicherentladung
+        # oder Speicher-Laden darf nicht mehrfach als Markterlös zählen.
+        deficit_mwh = max(0.0, -r.imbalance_mwh)
+        served_load_mwh = max(0.0, r.load_energy_mwh - deficit_mwh)
+        market_revenue += served_load_mwh * p.market_price_eur_per_mwh
 
         # Speicher-Throughput
         for cname, p_mw in r.components.items():

@@ -146,11 +146,10 @@ class HydrogenGasTurbine(DispatchableGenerator):
     verbrennt ihn in einer GuD-aehnlichen Anlage. CO2 emissionsfrei am
     Schornstein (nur Wasserdampf), Restemissionen aus Hilfsstrom.
 
-    Wichtige Vereinfachung: das Modell zaehlt KEIN H2 aus einem konkreten
-    Speicher ab — die Brennstoffversorgung wird hier als 'unbegrenzt'
-    angenommen. Wer das streng mit dem HydrogenStorage koppeln moechte,
-    muss den Verbrauch aus dem H2-Speicher als zusaetzliche Senke
-    modellieren (siehe docs/methodology.md, Abschnitt 'Vereinfachungen').
+    Die Engine koppelt diese Komponente an `HydrogenStorage`: pro MWh_el
+    werden 1 / eta MWh chemische H2-Energie aus dem Speicher entnommen.
+    Ist der Speicher leer, wird die tatsaechliche Leistung entsprechend
+    begrenzt.
     """
     p_min_mw: float = 20.0
     p_max_mw: float = 200.0

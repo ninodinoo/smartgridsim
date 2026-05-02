@@ -101,7 +101,7 @@ class RandomAIController(AILoopController):
                 else:
                     sp = self._rng.uniform(lo, hi)
                 actions.append({"component": name, "setpoint_mw": sp})
-            elif t in ("battery", "pumped_hydro"):
+            elif t in ("battery", "pumped_hydro", "hydrogen_storage"):
                 lo = -info["p_max_charge_mw"]
                 hi = info["p_max_discharge_mw"]
                 actions.append({"component": name,

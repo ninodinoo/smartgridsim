@@ -10,7 +10,7 @@ zuverlässiger versorgen als regelbasierte Heuristiken?**
 Ein deterministisches physikalisches Experiment für eine
 Physik-Seminararbeit (Abitur).
 
-[![Tests](https://img.shields.io/badge/tests-92%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-98%20passed-brightgreen)](#tests)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-private-lightgrey)](#)
 [![100%25 Renewable](https://img.shields.io/badge/grid-100%25%20renewable-green)](docs/methodology.md)
@@ -29,6 +29,11 @@ CO₂-Reduktion.
 
 `sgsim` ist die deterministische Simulation, mit der genau diese Frage
 **physikalisch sauber gemessen** werden kann.
+
+Aktueller Stand: Wetterwerte sind idempotent pro Seed/Zeitpunkt, der
+CLI-Seed steuert auch das Wetter, und das Wasserstoff-System ist geschlossen
+modelliert: Elektrolyseur lädt den H₂-Speicher, die H₂-Gasturbine entnimmt
+daraus chemische Energie.
 
 ```
                 ┌─────────────────────┐
@@ -84,6 +89,10 @@ sgsim tick                       # einen Schritt vorwärts
 sgsim metrics                    # aggregierte Messwerte
 ```
 
+Für Claude Code direkt im Terminal wird genau dieser stateful CLI-Modus
+verwendet: Claude liest `sgsim brief`, ruft pro Tick `sgsim state` auf, setzt
+Dispatch-/Curtailment-Aktionen und führt dann `sgsim tick` aus.
+
 ## 🏗️ Modell-Komponenten
 
 100 % erneuerbares Setup einer Mittelstadt (~150 000 EW):
@@ -112,7 +121,7 @@ sgsim metrics                    # aggregierte Messwerte
 **Sektorkopplung**
 - Wärmepumpen mit thermischem Puffer
 - V2G-Flotte (5000 E-Autos)
-- Elektrolyseur (Power-to-Gas)
+- Elektrolyseur (Power-to-Gas, lädt den H₂-Speicher)
 
 </td>
 </tr>
@@ -134,13 +143,17 @@ Pre-Registration, Variablen, Experimentaldesign:
 
 | Metrik | Naive | RuleBased | Δ |
 |---|---|---|---|
-| CO₂ [t] | 33 kg | 28 kg | **−15 %** |
-| Surplus [MWh] | 678 | 103 | **−85 %** |
-| Brownout-Ticks | 38 | 63 | +66 % |
-| Renewable Share | 56 % | 57 % | +1 % |
+| CO₂ [t] | 26.7 kg | 26.7 kg | ~0 % |
+| Surplus [MWh] | 377.5 | 12.5 | **−97 %** |
+| Unserved [MWh] | 1225.5 | 225.0 | **−82 %** |
+| Brownout-Ticks | 59 | 66 | +12 % |
+| Renewable Share | 57.0 % | 57.6 % | +1 % |
+| Total Cost [Mio. €] | 8.77 | 1.76 | **−80 %** |
+| LCOE [€/MWh] | 2193 | 385 | **−82 %** |
 
-> Die regelbasierte Strategie reduziert Verschwendung dramatisch, **erleidet
-> aber mehr Brownouts** — genau hier setzt die KI-Steuerung an.
+> Die regelbasierte Strategie reduziert Verschwendung und unversorgte Energie
+> dramatisch. Sie hat in Seed 42 mehr Brownout-Ticks, aber deutlich kleinere
+> Defizite; genau diese Zielkonflikte sind der Kern der Versuche.
 
 Statistik mit n=30 Seeds + Welch-t / Cohen's d:
 [`docs/experiments.md`](docs/experiments.md).
@@ -165,9 +178,9 @@ Statistik mit n=30 Seeds + Welch-t / Cohen's d:
 pytest
 ```
 
-92 Tests prüfen physikalische Konsistenz (Energiebilanz für jeden Seed,
+98 Tests prüfen physikalische Konsistenz (Energiebilanz für jeden Seed,
 Speicher-SoC-Grenzen, Frequenzcap), CLI-End-to-End, Serialisierung,
-Heuristik-Eigenschaften.
+Heuristik-Eigenschaften, Wetter-Reproduzierbarkeit und H₂-Kopplung.
 
 ```
 tests/

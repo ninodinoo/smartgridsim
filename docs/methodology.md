@@ -19,10 +19,12 @@ linie der Seminararbeit gegen Kritik an einzelnen Stellen.
 
 - **Synthetisch**, nicht aus realen Messreihen.
 - Globalstrahlung als Sinusbogen 6:00–20:00 Uhr, gedämpft mit `cloudiness`,
-  überlagert mit ±5 % Rauschen.
+  überlagert mit ±5 % deterministischem Rauschen.
 - Wind: Mittelwert ± diurnale Schwankung ± Rauschen, untere Schranke 0.
 - Temperatur: cosinusförmiger Tagesgang um Mittelwert.
-- **Reproduzierbar** über `seed`, aber **nicht real-validiert**.
+- **Reproduzierbar** über `seed`: Wetterwerte sind reine Funktionen von
+  `(seed, sim_time_h, Variable)`, damit Forecasts, Snapshots und
+  Speichern/Laden die Zeitreihe nicht verändern.
 - **Empfehlung**: für die Arbeit DWD-Stundenwerte oder PVGIS einsetzen
   (CSV-Schnittstelle steht in Phase 4 bereit).
 
@@ -64,9 +66,10 @@ linie der Seminararbeit gegen Kritik an einzelnen Stellen.
 - **Vereinfachung der Rampen-Logik:** wenn der Setpoint unter P_min fällt,
   schaltet die Engine sofort auf 0 ab. Real braucht ein Kraftwerk mehrere
   Stunden zum An-/Ausfahren mit Mindestbetriebszeiten.
-- **Vereinfachung der H₂-Gasturbine:** der verbrannte Wasserstoff wird
-  **nicht** explizit aus dem `HydrogenStorage` abgezogen. Wer das streng
-  modellieren will, muss den H₂-Verbrauch als zusätzliche Senke koppeln.
+- **H₂-Kopplung:** die H₂-Gasturbine entnimmt pro Tick
+  $P_{el} / \eta \cdot \Delta t$ chemische Energie aus dem saisonalen
+  `HydrogenStorage`. Ist der Speicher auf Mindest-SoC, wird die elektrische
+  Leistung der Turbine begrenzt.
 
 ### CO₂-Faktoren
 
@@ -116,10 +119,10 @@ gar nicht erneuerbar). Für die Steuerungsfrage spielt das keine Rolle.
   Abfahrt am Morgen.
 
 ### `Electrolyzer`
-- Reine Last (Strom → H₂), 50 MW max.
-- η_h2 = 0.70 informativ — der erzeugte Wasserstoff wird **nicht** an
-  `HydrogenStorage` gekoppelt. Wer die Vollbilanz will, muss eine Sub-Klasse
-  schreiben.
+- Steuerbare Last (Strom → H₂), 50 MW max.
+- η_h2 = 0.70. Die Engine bucht den erzeugten Wasserstoff in den saisonalen
+  `HydrogenStorage`; ist dieser voll, wird die elektrische Last des
+  Elektrolyseurs begrenzt.
 
 ## 7. Bilanzlogik der Engine
 
@@ -150,7 +153,8 @@ gar nicht erneuerbar). Für die Steuerungsfrage spielt das keine Rolle.
 ## 9. Reproduzierbarkeit
 
 - Alle Läufe sind über `--seed` reproduzierbar.
-- Tests prüfen `Grid.save()` / `Grid.load()` Round-Trip.
+- Tests prüfen `Grid.save()` / `Grid.load()` Round-Trip inklusive identischem
+  Folgetick und idempotente Wetterabfragen.
 - **Empfehlung:** Reproducibility-Hash über Code-Version + Szenario + Seed
   in jedem CSV-Sidecar speichern (Phase 5).
 
@@ -179,5 +183,5 @@ Energiewende.
 | BDEW-Approximation | "Approximation auf Basis publizierter H0/G0/L0-Charakteristik" |
 | Kupferplatte | "Annahme starkes Verteilnetz, Engpassmodellierung außerhalb des Scopes" |
 | Perfect-foresight-Forecast | "Identisch für alle Strategien — fairer Vergleich" |
-| H₂-Turbine ohne Speicherkopplung | "Energiebilanz validiert; H₂-Verfügbarkeit als unbeschränkt angenommen" |
+| H₂-Kopplung vereinfacht | "Ein gemeinsamer saisonaler H₂-Speicher, keine räumliche Gasnetz- oder Druckdynamik" |
 | n=1 Lauf je Strategie | "Bootstrapping mit n≥30 Seeds in Anhang X" |

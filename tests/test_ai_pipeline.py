@@ -40,7 +40,7 @@ def test_snapshot_components_typed() -> None:
     types = {info["type"] for info in snap["components"].values()}
     # mindestens diese Typen muessen im Standardszenario vorkommen
     for t in ("dispatchable_generator", "battery", "pumped_hydro",
-              "pv", "wind", "load"):
+              "hydrogen_storage", "pv", "wind", "load"):
         assert t in types, f"type {t!r} missing in snapshot"
 
 

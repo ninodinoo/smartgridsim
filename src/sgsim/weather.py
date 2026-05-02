@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import random
+import hashlib
 from dataclasses import dataclass
 
 
@@ -25,6 +26,19 @@ class SyntheticWeather:
     def __post_init__(self) -> None:
         self._rng = random.Random(self.seed)
 
+    def _uniform_noise(self, sim_time_h: float, channel: str, lo: float, hi: float) -> float:
+        """Deterministisches Rauschen fuer Zeitpunkt + Kanal.
+
+        Wetterabfragen muessen idempotent sein: Forecasts, Snapshots oder
+        State-Reloads duerfen die spaetere Wetterzeitreihe nicht veraendern.
+        Deshalb bekommt jeder Zeitpunkt/Kanal seinen eigenen lokalen RNG.
+        """
+        tick_s = int(round(sim_time_h * 3600.0))
+        key = f"{self.seed}:{channel}:{tick_s}".encode("utf-8")
+        digest = hashlib.sha256(key).digest()
+        local_seed = int.from_bytes(digest[:8], "big")
+        return random.Random(local_seed).uniform(lo, hi)
+
     def irradiance(self, sim_time_h: float) -> float:
         """Globale Horizontalstrahlung in W/m^2.
 
@@ -37,7 +51,7 @@ class SyntheticWeather:
         # Sinusbogen 6:00 .. 20:00 Uhr, Maximum 13:00
         phase = math.pi * (h - 6.0) / 14.0
         clear_sky = 900.0 * math.sin(phase)
-        noise = self._rng.uniform(-0.05, 0.05)
+        noise = self._uniform_noise(sim_time_h, "irradiance", -0.05, 0.05)
         value = clear_sky * (1.0 - 0.8 * self.cloudiness) * (1.0 + noise)
         return max(0.0, value)
 
@@ -45,7 +59,7 @@ class SyntheticWeather:
         """Windgeschwindigkeit auf Nabenhoehe [m/s]."""
         # leichte Tagesschwankung + Rauschen, untere Schranke 0
         diurnal = 1.0 + 0.2 * math.sin(2 * math.pi * sim_time_h / 24.0)
-        noise = self._rng.uniform(-1.5, 1.5)
+        noise = self._uniform_noise(sim_time_h, "wind", -1.5, 1.5)
         return max(0.0, self.mean_wind_m_s * diurnal + noise)
 
     def temperature(self, sim_time_h: float) -> float:

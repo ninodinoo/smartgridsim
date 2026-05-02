@@ -191,14 +191,9 @@ class EVFleet(Component):
 class Electrolyzer(Component):
     """Elektrolyseur: nimmt Strom auf, produziert Wasserstoff.
 
-    Vereinfachung: hier nur als steuerbare Last modelliert. Der erzeugte
-    Wasserstoff wird NICHT direkt in einen H2-Speicher gebucht (das wuerde
-    eine Komponenten-Kopplung erfordern). Statt dessen ist der
-    Elektrolyseur ein "Stromschlucker", der CO2-frei ist und im Modell
-    Ueberschuss aufnehmen kann.
-
-    Wer den H2-Output explizit modellieren will, kann eine Sub-Klasse
-    schreiben, die das HydrogenStorage-Objekt referenziert.
+    Die Engine bucht den erzeugten Wasserstoff in den saisonalen
+    `HydrogenStorage`: P_el * eta_h2 * dt erhoeht den chemischen SoC.
+    Ist der Speicher voll, wird die tatsaechliche elektrische Last begrenzt.
     """
 
     p_max_mw: float = 50.0

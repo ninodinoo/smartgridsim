@@ -168,8 +168,10 @@ Aggregierte Spitzenleistung: 55 MW (5000 × 11 kW).
 
 ### `Electrolyzer` — Power-to-Gas
 
-Reine Last (50 MW max), $\eta_{H_2}$ = 0.70 (informativ; H₂-Output ist
-**nicht** an `HydrogenStorage` gekoppelt — Vereinfachung, siehe Methodology).
+Steuerbare Last (50 MW max), $\eta_{H_2}$ = 0.70. Die Engine koppelt den
+Elektrolyseur an den saisonalen `HydrogenStorage`: pro Tick erhöht
+$P_{el} \cdot \eta_{H_2} \cdot \Delta t$ den chemischen H₂-SoC. Ist der
+H₂-Speicher voll, wird die tatsächlich aufgenommene Leistung begrenzt.
 
 ---
 

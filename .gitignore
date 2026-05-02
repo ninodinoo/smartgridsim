@@ -12,5 +12,6 @@ venv/
 
 .sgsim_state.json
 results/
+runs/
 *.csv
 !data/**/*.csv

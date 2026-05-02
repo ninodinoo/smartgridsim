@@ -11,7 +11,10 @@ from .components import (
     BiomassPlant,
     Component,
     DispatchableGenerator,
+    Electrolyzer,
     GeothermalPlant,
+    HydrogenGasTurbine,
+    HydrogenStorage,
     PVPlant,
     RunOfRiverHydro,
     Storage,
@@ -122,8 +125,13 @@ class Grid:
         p_total = 0.0
         co2_kg = 0.0
         e_renewable = 0.0
+        h2_storages = [c for c in self.components if isinstance(c, HydrogenStorage)]
         for c in self.components:
             p = c.step(self.dt_h, ctx)
+            if isinstance(c, HydrogenGasTurbine) and p > 0.0:
+                p = self._consume_h2_for_turbine(c, p, h2_storages)
+            elif isinstance(c, Electrolyzer) and p < 0.0:
+                p = self._store_h2_from_electrolyzer(c, p, h2_storages)
             per_comp[c.name] = p
             details = c.snapshot()
             if details:
@@ -180,6 +188,73 @@ class Grid:
         self.sim_time_h += self.dt_h
         self.step_count += 1
         return rec
+
+    def _consume_h2_for_turbine(
+        self,
+        turbine: HydrogenGasTurbine,
+        requested_p_mw: float,
+        storages: list[HydrogenStorage],
+    ) -> float:
+        """Begrenzt H2-Turbinenleistung durch den saisonalen H2-Speicher.
+
+        `HydrogenStorage.soc_mwh` beschreibt die gespeicherte chemische
+        Energie. Die Turbine entnimmt daraus P_el / eta pro Tick.
+        """
+        if not storages or turbine.eta <= 0.0:
+            turbine.current_p_mw = 0.0
+            return 0.0
+
+        available_h2_mwh = sum(
+            max(0.0, s.soc_mwh - s.min_soc_mwh) for s in storages
+        )
+        required_h2_mwh = requested_p_mw / turbine.eta * self.dt_h
+        if required_h2_mwh <= available_h2_mwh + 1e-12:
+            actual_p_mw = requested_p_mw
+            to_consume = required_h2_mwh
+        else:
+            actual_p_mw = available_h2_mwh * turbine.eta / self.dt_h
+            to_consume = available_h2_mwh
+
+        remaining = to_consume
+        for s in storages:
+            if remaining <= 0.0:
+                break
+            take = min(max(0.0, s.soc_mwh - s.min_soc_mwh), remaining)
+            s.soc_mwh -= take
+            remaining -= take
+
+        turbine.current_p_mw = actual_p_mw
+        return actual_p_mw
+
+    def _store_h2_from_electrolyzer(
+        self,
+        electrolyzer: Electrolyzer,
+        requested_p_mw: float,
+        storages: list[HydrogenStorage],
+    ) -> float:
+        """Bucht Elektrolyseur-Output in den saisonalen H2-Speicher."""
+        if not storages or electrolyzer.eta_h2 <= 0.0:
+            return 0.0
+
+        requested_load_mw = -requested_p_mw
+        requested_h2_mwh = requested_load_mw * electrolyzer.eta_h2 * self.dt_h
+        free_mwh = sum(max(0.0, s.capacity_mwh - s.soc_mwh) for s in storages)
+        if requested_h2_mwh <= free_mwh + 1e-12:
+            actual_load_mw = requested_load_mw
+            to_store = requested_h2_mwh
+        else:
+            actual_load_mw = free_mwh / electrolyzer.eta_h2 / self.dt_h
+            to_store = free_mwh
+
+        remaining = to_store
+        for s in storages:
+            if remaining <= 0.0:
+                break
+            add = min(max(0.0, s.capacity_mwh - s.soc_mwh), remaining)
+            s.soc_mwh += add
+            remaining -= add
+
+        return -actual_load_mw
 
     def run(self, n_steps: int) -> list[TickRecord]:
         return [self.tick() for _ in range(n_steps)]

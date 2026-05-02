@@ -76,6 +76,15 @@ def test_curtailment_command(tmp_path: Path) -> None:
     assert payload["curtailment"] == 0.4
 
 
+def test_init_seed_also_sets_weather_seed(tmp_path: Path) -> None:
+    p = _run(["init", "--seed", "123"], tmp_path)
+    assert p.returncode == 0, p.stderr
+    p = _run(["state", "--full"], tmp_path)
+    payload = json.loads(p.stdout)
+    assert payload["seed"] == 123
+    assert payload["weather"]["seed"] == 123
+
+
 def test_dispatch_to_storage_negative_means_charge(tmp_path: Path) -> None:
     _run(["init"], tmp_path)
     p = _run(["dispatch", "--", "batterie_quartier", "-30"], tmp_path)

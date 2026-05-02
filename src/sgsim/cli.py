@@ -96,15 +96,16 @@ def init(scenario: str | None, seed: int | None) -> None:
 
     raw = yaml.safe_load(Path(scenario).read_text(encoding="utf-8"))
 
+    used_seed = seed if seed is not None else raw.get("seed", 42)
     weather = SyntheticWeather(
-        seed=raw.get("seed", 42),
+        seed=used_seed,
         **{k: v for k, v in raw.get("weather", {}).items()},
     )
     components = [from_dict(d) for d in raw.get("components", [])]
 
     grid = Grid(
         name=raw.get("name", "default"),
-        seed=seed if seed is not None else raw.get("seed", 42),
+        seed=used_seed,
         dt_min=raw.get("dt_min", 15),
         components=components,
         weather=weather,
